@@ -88,7 +88,7 @@ class M2NISTDataset(Dataset):
         
         if normalize:
             data = data / 255.0
-        return data.unsqueeze(1)
+        return data.type(torch.float32).unsqueeze(1)
 
     def __len__(self):
         return self.data.shape[0]
