@@ -85,6 +85,22 @@ Compared with 6 baselines: SDXL, DALL-E3, ...
 
 <img title="make_it_count" alt="make_it_count" src="images/make_it_count_architecture.png">
 
+<h3>Diffusion Models for Implicit Image Segmentation Ensembles (Wolleb et al.)</h3>
+
+<b>Idea</b>: Train DDPM on the ground truth masks. Take the ground truth mask and apply noise to it. The underlying architecture to predict the noise is a UNet. However, the UNet does not only take the timestep $t$ and the noisy ground truth mask $x_{b,t}$ at that timestep as input, it concatenates the $x_{b,t}$ with the original image $b$. This original image $b$ actually consists of for different MR sequences. 
+
+<b>Sampling process</b>: Sample $n$ noisy masks, apply the reverse diffusion process on all of them using the trained UNet. Then take the mean of all the created binary masks. (Ensemble) Advantage: We do not need to train multiple models for the ensemble, due to the stochastic nature we can just sample multiple times from one model. 
+
+<b>Key Points</b>:
+- DDPM on the ground truth mask
+- Condition UNet and therefore the reverse probabilities on the input image
+- Ensemble: Apply Sampling process multiple times
+
+
+<h3>MedSegDiff-V2: Diffusion based Medical Image Segmentation with Transformer</h3>
+
+
+
 <!-- Dear Prof. Wattenhofer
 
 Sorry for my late response, I spent some time on vacation, before starting with the thesis. 
