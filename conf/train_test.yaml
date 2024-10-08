@@ -1,0 +1,37 @@
+defaults:
+  - dataset: m2nist
+  - dataloader: base_dataloader
+  - model: unet_dmisse
+  - diffusion: base_diffusion
+  - trainer: base_trainer
+  - _self_
+
+project_name: dmiise
+train: True
+model_path: model/model.pth
+seed: 42
+
+wandb_tags: ["debug"]
+
+
+
+
+hydra:
+  run:
+    dir: ../hydra_output/${project_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job_logging:
+    formatters:
+      simple:
+        format: '[%(asctime)s] - [%(levelname)s] - [%(name)s] - %(message)s'
+        datefmt: '%Y-%m-%d %H:%M:%S'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout
+      file:
+        class: logging.FileHandler
+        formatter: simple
+        filename: ../hydra_output/${project_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}/train.log
+    root:
+      handlers: [console, file]
