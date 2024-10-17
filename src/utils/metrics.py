@@ -3,7 +3,6 @@ import monai.metrics
 
 from utils.hydra_config import MetricsConfig
 
-
 def generate_metrics_fn(config: MetricsConfig):
     metric_fns = {}
 

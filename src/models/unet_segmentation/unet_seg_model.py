@@ -3,19 +3,22 @@ import pytorch_lightning as pl
 import random
 import torch
 import torch.nn as nn
+import wandb
 
 from monai.losses import DiceLoss, DiceCELoss
 from models.base_segmentation import BaseSegmentation
 from utils.hydra_config import SegmentationConfig, UNetConfig
 # from utils.metrics import dice_loss
-from utils.visualize import visualize_sampling_res
+from utils.visualize import visualize_sampling_res, load_res_to_wandb
+from monai.losses import DiceLoss
+from utils.metrics import compute_and_log_metrics
 
 class UnetSegmentation(BaseSegmentation):
     def __init__(self, config: SegmentationConfig):
-        super(config).__init__()
+        super().__init__(config)
 
     def create_segmentation_model(self):
-        model = self.create_model(self.config.model)
+        model = self.create_model()
         metrics = self.create_metrics_fn()
         return UnetSegmentationModel(model, metrics)
  
@@ -37,7 +40,7 @@ class UnetSegmentationModel(pl.LightningModule):
         super(UnetSegmentationModel, self).__init__()
         self.model = model
         self.metrics = metrics
-        self.loss_fn = DiceLoss(sigmoid=True)
+        self.loss_fn = DiceLoss(include_background=False)
         
 
     def forward(self, x):
@@ -46,31 +49,39 @@ class UnetSegmentationModel(pl.LightningModule):
     def training_step(self, batch):
         images, masks = batch
         pred_masks = self.model(images)
-        
+
         loss = self.loss_fn(pred_masks, masks)
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        images, masks = batch
+        images, gt_masks = batch
         pred_masks = self.model(images)
-        loss = self.loss_fn(pred_masks, masks)
+        pred_masks = pred_masks > 0.5
+
+        loss = self.loss_fn(pred_masks, gt_masks)
         self.log('val_loss', loss)
 
         index = random.randint(0, pred_masks.shape[0] - 1)
-        visualize_sampling_res(images[index], pred_masks[index] > 0.5, masks[index], name='unet_seg', batch_idx=self.val_step)
-        self.val_step += 1
+        # val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
+        # wandb.log({"val_examples": val_images})
+
+        compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
         return loss
 
-    def test_step(self, batch):
-        images, masks = batch
+    def test_step(self, batch, batch_idx):
+        images, gt_masks = batch
         pred_masks = self.model(images)
-        loss = self.loss_fn(pred_masks, masks)
-        self.log('val_loss', loss)
+        pred_masks = pred_masks > 0.5
+
+        loss = self.loss_fn(pred_masks, gt_masks)
+        self.log('test_loss', loss)
 
         index = random.randint(0, pred_masks.shape[0] - 1)
-        visualize_sampling_res(images[index], pred_masks[index], masks[index], name='unet_seg', batch_idx=self.val_step)
-        self.val_step += 1
+        # val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
+        # wandb.log({"test_examples": val_images})
+
+        compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "test", self.log)
         return loss
 
     def configure_optimizers(self):

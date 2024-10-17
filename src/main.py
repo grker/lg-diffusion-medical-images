@@ -43,6 +43,7 @@ def main(config: SegmentationConfig):
     os.system(f"rm -r {logdir}/*")
 
     print(f"Is cuda available: {torch.cuda.is_available()}")
+    print(f"uses device: {torch.cuda.current_device()}")
     
 
     segmentor = create_segmentor(config)

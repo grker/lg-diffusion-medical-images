@@ -44,7 +44,7 @@ class BaseSegmentation:
         print(f"Creating dataset {config.name}")
         if config.name == 'acdc':
             from dataset.acdc_dataset import ACDCDataset
-            return ACDCDataset(folder_path=config.data_path, image_size=config.image_size)
+            return ACDCDataset(config)
         elif config.name == 'm2nist':
             from dataset.mnist import M2NISTDataset
             return M2NISTDataset(config)
