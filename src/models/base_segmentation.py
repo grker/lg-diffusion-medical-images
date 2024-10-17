@@ -4,24 +4,41 @@ import pytorch_lightning as pl
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data import random_split
+from utils.metrics import generate_metrics_fn
+import torch
 import torch.nn as nn
-from utils.hydra_config import DatasetConfig, DataloaderConfig, UNetConfig, DiffusionConfig, SegmentationConfig
+from utils.hydra_config import DatasetConfig, DataloaderConfig, UNetConfig, DiffusionConfig, SegmentationConfig, MetricsConfig
 
 
-def create_segmentor(project_name: str):
-    if project_name == 'dmisse':
+def create_segmentor(config: SegmentationConfig):
+    project_name = config.project_name
+    if project_name == 'dmiise':
         from models.dmiise.dmiise_model import DmiiseSegmentation
-        return DmiiseSegmentation()
+        return DmiiseSegmentation(config)
     elif project_name == 'unet_seg':
         from models.unet_segmentation.unet_seg_model import UnetSegmentation
-        return UnetSegmentation()
+        return UnetSegmentation(config)
     else:
         raise NotImplementedError(f"Segmentation model {project_name} not implemented")
 
 
 class BaseSegmentation:
-    def __init__(self):
+    def __init__(self, config: SegmentationConfig):
         super().__init__()
+        self.config = config
+        self.device = self.set_device()
+
+    def set_device(self) -> str:
+        if self.config.trainer.accelerator is None:
+            return "cpu"
+        if self.config.trainer.accelerator == "gpu":
+            if torch.cuda.is_available():
+                return f"cuda:{torch.cuda.current_device()}"
+            else:
+                return "cpu"
+
+        return self.config.trainer.accelerator
+        
 
     def create_dataset(self, config: DatasetConfig) -> Dataset:
         print(f"Creating dataset {config.name}")
@@ -46,24 +63,34 @@ class BaseSegmentation:
         train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
         train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=config.shuffle)
-        val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=config.shuffle)
-        test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=config.shuffle)
+        val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
         
         return train_loader, val_loader, test_loader
     
 
-    def create_dataset_dataloader(self, dataset_config: DatasetConfig, dataloader_config: DataloaderConfig) -> tuple[Dataset, DataLoader]:
-        dataset = self.create_dataset(dataset_config)
-        return dataset, self.create_dataloaders(dataloader_config, dataset)
+    def create_dataset_dataloader(self) -> tuple[Dataset, DataLoader]:
+        dataset = self.create_dataset(self.config.dataset)
+        return dataset, self.create_dataloaders(self.config.dataloader, dataset)
     
-    def create_segmentation_model(self, config: SegmentationConfig) -> pl.LightningModule:
-        raise NotImplementedError("Model creation method not implemented")
+    def create_metrics_fn(self):
+        metrics = generate_metrics_fn(self.config.metrics)
+        return metrics
+    
+    # def create_segmentation_model(self) -> pl.LightningModule:
+    #     raise NotImplementedError("Model creation method not implemented")
 
-    def create_model(self, config: UNetConfig):
-        raise NotImplementedError("Model creation method not implemented")
+    # def create_model(self, config: UNetConfig):
+    #     raise NotImplementedError("Model creation method not implemented")
     
-    def create_diffusion(self, config: DiffusionConfig, model: nn.Module):
-        raise NotImplementedError("Diffusion creation method not implemented")
+    # def create_diffusion(self, config: DiffusionConfig, model: nn.Module):
+    #     raise NotImplementedError("Diffusion creation method not implemented")
+    
+    def initialize(self) -> pl.LightningModule:
+        raise NotImplementedError("Initialize methode not implemented")
+
+
+    
     
     
     def train(self):
