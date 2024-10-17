@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
 import torch
+import wandb
+import numpy as np
 
 from PIL import Image
 
@@ -55,3 +57,50 @@ def visualize_sampling_res(image: torch.Tensor, pred_mask: torch.Tensor, true_ma
     name = ('_' + str(name)) if name else ''
     name = name + (('_' + str(batch_idx)) if batch_idx else '')
     plt.savefig(f'../results/sampling{name}.png')
+
+
+def torch_to_2d_numpy(tensor: torch.Tensor):
+    tensor = tensor.cpu().detach()
+    while len(tensor.shape) > 2:
+        tensor = tensor.squeeze()
+
+    return tensor.numpy()
+
+def load_res_to_wandb(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: torch.Tensor, caption: str=""):
+    image = torch_to_2d_numpy(image)
+    if gt_mask is not None:
+        gt_mask = torch_to_2d_numpy(gt_mask)
+    
+    print(f"pred mask: {pred_mask}")
+    pred_mask = torch_to_2d_numpy(pred_mask)
+    dens, edges = np.histogram(pred_mask)
+    print(f"histogram: {dens}, edges: {edges}")
+
+    if gt_mask is not None: 
+        return wandb.Image(
+            image,
+            masks={
+                "predictions": {
+                    "mask_data": pred_mask,
+                    "class_labels": {0: "foreground", 1: "background"},
+                },
+                "ground_truth": {
+                    "mask_data": gt_mask,
+                    "class_labels": {0: "foreground_gt", 1: "background_gt"},
+                },
+            },
+            caption=caption
+        )
+    else:
+        return wandb.Image(
+            image,
+            masks={
+                "predictions": {
+                    "mask_data": pred_mask,
+                    "class_labels": {0: "foreground", 1: "background"},
+                }
+            },
+            caption=caption
+        )
+
+    
