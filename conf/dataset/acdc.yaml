@@ -1,0 +1,6 @@
+name: acdc
+data_path: ../data/ACDC/dataset
+image_size: [256, 256]
+normalize: True
+mode: bilinear
+multiclass: False
