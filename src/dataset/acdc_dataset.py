@@ -40,11 +40,17 @@ class ACDCDataset(Dataset):
         self.test_samples = testing_data.shape[0]
         self.ratio = self.training_samples / (self.training_samples + self.test_samples)  
 
-        self.data = torch.cat((training_data, testing_data), dim=0)
-        self.gt = torch.cat((training_gt, testing_gt), dim=0)
+        self.data = torch.cat((training_data, testing_data), dim=0).unsqueeze(1).type(dtype=torch.float32)
+        self.gt = torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)
 
         if not self.multiclass:
             self.gt = torch.where(self.gt != 0, 1.0, 0.0)
+
+        print(f"shape of data: {self.data.shape}")
+        print(f"shape of data: {self.gt.shape}")
+
+        print(f"type of data: {self.data.type()}")
+        print(f"type of gt: {self.gt.type()}")
 
 
     def load_patients(self, folder_path):
@@ -80,7 +86,6 @@ class ACDCDataset(Dataset):
         
     
     def load_frame(self, patient_path: str, frame_info: list[dict]):
-        print(f"processing patient: {patient_path.split('/')[-1]}")
         assert(len(frame_info) == 2 and frame_info[0]['gt'] != frame_info[1]['gt'])
         
         data, gt = None, None
@@ -97,14 +102,9 @@ class ACDCDataset(Dataset):
                 data_tmp = np.moveaxis(data_tmp, -1, 0)
                 data_resized = np.zeros((data_tmp.shape[0], self.image_size[0], self.image_size[1]))
                 for i in range(data_tmp.shape[0]):
-                    print(f"resizing image {data_tmp[i].shape}")
-                    print(f"image type: {type(data_tmp[i])}")
-                    print(f"image size: {self.image_size}")
-                    print(f"image size type: {type(self.image_size)}")
                     data_resized[i] = cv2.resize(data_tmp[i], self.image_size)
                 data = torch.from_numpy(data_resized)
         
-        print(f"Shape: {data.shape}, GT: {gt.shape}")
         return data, gt
 
     def __len__(self):
@@ -112,6 +112,17 @@ class ACDCDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx], self.gt[idx]
+
+    def get_image_size(self):
+        return self.data.shape[1:]
+    
+    def get_image_height(self):
+        return self.data.shape[2]
+    
+    def get_image_width(self):
+        return self.data.shape[3]
+
+
     
 
 class ACDCDatasetGTAutoEncoder(ACDCDataset):
