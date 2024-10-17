@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 
 from torch.utils.data import Dataset
+from utils.hydra_config import DatasetConfig
 
 
 class ACDCDataset(Dataset):
@@ -20,12 +21,14 @@ class ACDCDataset(Dataset):
     test_samples: int
     ratio: float
 
-    def __init__(self, folder_path: str, image_size: tuple[int,int] = (256,256), cuts: list[int] = [0,1,2,3,4,5,6,7,8,9]):
-        self.training_folder = os.path.join(folder_path, 'training')
-        self.testing_folder = os.path.join(folder_path, 'testing')
+    def __init__(self, config: DatasetConfig):
+        self.training_folder = os.path.join(config.data_path, 'training')
+        self.testing_folder = os.path.join(config.data_path, 'testing')
 
-        self.image_size = image_size
-        self.cuts = [cut for cut in cuts if cut >= 0 and cut < 10]
+        self.image_size = config.image_size
+        self.normalize = config.normalize
+        self.mode = config.mode
+        self.multiclass = config.multiclass
         self.load_data()
 
 
@@ -39,6 +42,9 @@ class ACDCDataset(Dataset):
 
         self.data = torch.cat((training_data, testing_data), dim=0)
         self.gt = torch.cat((training_gt, testing_gt), dim=0)
+
+        if not self.multiclass:
+            self.gt = torch.where(self.gt != 0, 1.0, 0.0)
 
 
     def load_patients(self, folder_path):
