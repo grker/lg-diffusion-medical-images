@@ -9,18 +9,17 @@ class ResNetConfig(ModelConfig):
     layers: list[int]
     starting_channels: int
 
-class UNetConfig(ModelConfig):
-    sample_layers: list[int]
-    bottleneck_layers: list[int]
-    starting_channels: int
-    time_dim: int
+# class UNetConfig(ModelConfig):
+#     sample_layers: list[int]
+#     bottleneck_layers: list[int]
+#     starting_channels: int
+#     time_dim: int
 
 class DiffusionConfig:
     noise_steps: int
     beta_start: float
     beta_end: float
     scheduler_type: str
-    img_size: tuple[int,int]
     device: str
     var_learned: bool
 
@@ -35,6 +34,7 @@ class DatasetConfig:
     image_size: tuple[int,int]
     normalize: bool
     mode: str
+    multiclass: bool
 
 
 class DataloaderConfig:
@@ -47,18 +47,6 @@ class TrainerConfig:
     max_epochs: int
     enable_progress_bar: bool
     accelerator: str
-
-class SegmentationConfig:
-    project_name: str
-    dataset: DatasetConfig
-    dataloader: DataloaderConfig
-    model: ModelConfig
-    diffusion: DiffusionConfig
-    trainer: TrainerConfig
-    train: bool
-    model_path: str
-    wandb_tags: list[str]
-    seed: int
 
 class UNetConfig(ModelConfig):
     image_size: tuple[int,int]
@@ -81,4 +69,26 @@ class UNetConfig(ModelConfig):
     resblock_updown: bool
     use_new_attention_order: bool
 
+
+class MetricsConfig:
+    metric_fns_config: dict
+
+class OptimizerConfig:
+    lr: float
+    weight_decay: float
+
+
+class SegmentationConfig:
+    project_name: str
+    dataset: DatasetConfig
+    dataloader: DataloaderConfig
+    model: ModelConfig
+    diffusion: DiffusionConfig
+    trainer: TrainerConfig
+    metrics: MetricsConfig
+    optimizer: OptimizerConfig
+    train: bool
+    model_path: str
+    wandb_tags: list[str]
+    seed: int
 
