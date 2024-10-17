@@ -3,3 +3,4 @@ data_path: ../data/M2NIST
 image_size: null
 normalize: True
 mode: bilinear
+multiclass: False

@@ -4,7 +4,7 @@ model_channels: 32
 out_channels: 1
 num_res_blocks: 2
 attention_resolutions: []
-dropout: 0.1
+dropout: 0.3
 channel_mult: [1,2,4]
 conv_resample: False
 dims: 2

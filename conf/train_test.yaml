@@ -4,6 +4,8 @@ defaults:
   - model: unet_dmisse
   - diffusion: base_diffusion
   - trainer: base_trainer
+  - metrics: base_metrics
+  - optimizer: base_optimizer
   - _self_
 
 project_name: dmiise

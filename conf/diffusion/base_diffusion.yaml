@@ -2,7 +2,6 @@ noise_steps: 1000
 beta_start: 1e-4
 beta_end: 0.02
 scheduler_type: linear
-img_size: [128, 128]
 device: cpu
 var_learned: False
 
