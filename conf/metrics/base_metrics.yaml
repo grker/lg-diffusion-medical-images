@@ -2,4 +2,4 @@ metric_fns_config:
   DiceMetric:
     include_background: False
     reduction: mean
-  HausdorffDistanceMetric
+  HausdorffDistanceMetric:
