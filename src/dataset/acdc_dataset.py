@@ -63,14 +63,14 @@ class ACDCDataset(Dataset):
             if patient.startswith('patient'):
                 patient_path = os.path.join(folder_path, patient)
                 data_patient, gt_patient = self.load_patient(patient_path)
-                data_patient, gt_patient, patient_scaler = self.normalize_and_augment_patient_data(data_patient, gt_patient)
+                data_patient, gt_patient, max_value = self.normalize_and_augment_patient_data(data_patient, gt_patient)
 
                 self.idx_to_patient.append(index)
                 self.patient_metadata.append({
                     'patient': patient,
                     'startIdx': index,
                     'frames': data_patient.shape[0],
-                    'scaler': patient_scaler,
+                    'max': max_value,
                 })
                 index += data_patient.shape[0]
 
@@ -81,9 +81,9 @@ class ACDCDataset(Dataset):
     
     def normalize_and_augment_patient_data(self, patient_data: torch.Tensor, patient_gt):
         from sklearn.preprocessing import MinMaxScaler
-
-        patient_scaler = MinMaxScaler()
-        return patient_scaler.fit_transform(patient_data), patient_gt, patient_scaler
+        max_value = torch.max(patient_data)
+    
+        return patient_data / max_value, patient_gt, max_value
 
     def load_patient(self, patient_path):
         frames = {}
