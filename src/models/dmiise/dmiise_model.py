@@ -21,11 +21,8 @@ class DmiiseSegmentation(BaseSegmentation):
         return UNetModel(self.config.model)
     
     def create_diffusion(self, model: nn.Module, device: str="cpu"):
-        from models.dmiise.diffusion import Diffusion, DDP, DDPM
-        
-        diffusion = Diffusion(self.config.diffusion, device)
+        from models.dmiise.diffusion import DDPM
         metrics = self.create_metrics_fn()
-        # return DDP(model, diffusion, metrics, self.config.optimizer)
         return DDPM(model, self.config.diffusion, self.config.optimizer, metrics)
     
     def initialize(self) -> pl.LightningModule:

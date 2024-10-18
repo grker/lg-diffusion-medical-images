@@ -16,6 +16,7 @@ class ACDCDataset(Dataset):
 
     data: torch.Tensor
     gt: torch.Tensor
+    patient_metadata: list[dict]
 
     training_samples: int
     test_samples: int
@@ -29,6 +30,7 @@ class ACDCDataset(Dataset):
         self.normalize = config.normalize
         self.mode = config.mode
         self.multiclass = config.multiclass
+        self.patient_metadata = []
         self.load_data()
 
 
@@ -44,7 +46,7 @@ class ACDCDataset(Dataset):
         self.gt = torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)
 
         if not self.multiclass:
-            self.gt = torch.where(self.gt != 0, 1.0, 0.0)
+            self.gt = (self.gt > 0).type(torch.float32)
 
         print(f"shape of data: {self.data.shape}")
         print(f"shape of data: {self.gt.shape}")
@@ -55,14 +57,33 @@ class ACDCDataset(Dataset):
 
     def load_patients(self, folder_path):
         data, gt = torch.empty(0), torch.empty(0)
+        index = 0
+        self.idx_to_patient = []
         for patient in os.listdir(folder_path):
             if patient.startswith('patient'):
                 patient_path = os.path.join(folder_path, patient)
                 data_patient, gt_patient = self.load_patient(patient_path)
+                data_patient, gt_patient, patient_scaler = self.normalize_and_augment_patient_data(data_patient, gt_patient)
+
+                self.idx_to_patient.append(index)
+                self.patient_metadata.append({
+                    'patient': patient,
+                    'startIdx': index,
+                    'frames': data_patient.shape[0],
+                    'scaler': patient_scaler,
+                })
+                index += data_patient.shape[0]
+
                 data = torch.cat((data, data_patient), dim=0)
                 gt = torch.cat((gt, gt_patient), dim=0)
         
         return data, gt
+    
+    def normalize_and_augment_patient_data(self, patient_data: torch.Tensor, patient_gt):
+        from sklearn.preprocessing import MinMaxScaler
+
+        patient_scaler = MinMaxScaler()
+        return patient_scaler.fit_transform(patient_data), patient_gt, patient_scaler
 
     def load_patient(self, patient_path):
         frames = {}
@@ -77,11 +98,14 @@ class ACDCDataset(Dataset):
                     frames[frame] = [{'file': file, 'gt': len(splits) == 3}]
         
         data_patient, gt_patient = torch.empty(0), torch.empty(0)
+
         for frame in frames.values():
             data_tmp, gt_tmp = self.load_frame(patient_path, frame)
             data_patient = torch.cat((data_patient, data_tmp), dim=0) 
             gt_patient = torch.cat((gt_patient, gt_tmp), dim=0)
 
+        print(f"data patient shape: {data_patient.shape}")
+        
         return data_patient, gt_patient
         
     
@@ -105,6 +129,15 @@ class ACDCDataset(Dataset):
                     data_resized[i] = cv2.resize(data_tmp[i], self.image_size)
                 data = torch.from_numpy(data_resized)
         
+        good_indices = []
+
+        for i, gt_mask in enumerate(gt):
+            if torch.sum(gt_mask, dim=(-2,-1)) > 0:
+                # only keep the non-empty segmentation masks
+                good_indices.append(i)
+        
+        data = data[good_indices]
+        gt = gt[good_indices]
         return data, gt
 
     def __len__(self):

@@ -69,12 +69,10 @@ def torch_to_2d_numpy(tensor: torch.Tensor):
 def load_res_to_wandb(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: torch.Tensor, caption: str=""):
     image = torch_to_2d_numpy(image)
     if gt_mask is not None:
-        gt_mask = torch_to_2d_numpy(gt_mask)
+        gt_mask = torch_to_2d_numpy(gt_mask) + 2
     
-    print(f"pred mask: {pred_mask}")
     pred_mask = torch_to_2d_numpy(pred_mask)
     dens, edges = np.histogram(pred_mask)
-    print(f"histogram: {dens}, edges: {edges}")
 
     if gt_mask is not None: 
         return wandb.Image(
@@ -82,11 +80,11 @@ def load_res_to_wandb(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: tor
             masks={
                 "predictions": {
                     "mask_data": pred_mask,
-                    "class_labels": {0: "foreground", 1: "background"},
+                    "class_labels": {0: "background", 1: "foreground"},
                 },
                 "ground_truth": {
                     "mask_data": gt_mask,
-                    "class_labels": {0: "foreground_gt", 1: "background_gt"},
+                    "class_labels": {2: "background", 3: "foreground"},
                 },
             },
             caption=caption

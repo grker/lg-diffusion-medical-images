@@ -1,5 +1,6 @@
 import torch
 import monai.metrics
+import numpy as np
 
 from utils.hydra_config import MetricsConfig
 
@@ -26,10 +27,12 @@ def generate_metrics_fn(config: MetricsConfig):
 
 def compute_and_log_metrics(metric_fns: dict, pred: torch.Tensor, gt: torch.Tensor, phase: str, logger) -> dict:
     scores = {}
-    
+
     for metric_name, metric_fn in metric_fns.items():
+        print(f"compute metric: {metric_name}")
         try: 
-            score = metric_fn(pred, gt).mean().item()
+            score = metric_fn(pred, gt)
+            score = score.mean().item()
             logger(f"{phase}_{str(metric_name)}", score)
         except Exception as e:
             print(f"{metric_fn} cannot be computed. Received Error: {str(e)}")

@@ -40,7 +40,7 @@ class UnetSegmentationModel(pl.LightningModule):
         super(UnetSegmentationModel, self).__init__()
         self.model = model
         self.metrics = metrics
-        self.loss_fn = DiceLoss(include_background=False)
+        self.loss_fn = DiceLoss(include_background=False, sigmoid=True)
         
 
     def forward(self, x):
@@ -63,8 +63,8 @@ class UnetSegmentationModel(pl.LightningModule):
         self.log('val_loss', loss)
 
         index = random.randint(0, pred_masks.shape[0] - 1)
-        # val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
-        # wandb.log({"val_examples": val_images})
+        val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
+        wandb.log({"val_examples": val_images})
 
         compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
         return loss

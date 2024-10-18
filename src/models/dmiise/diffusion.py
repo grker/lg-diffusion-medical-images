@@ -235,17 +235,20 @@ class DDPM(pl.LightningModule):
         noisy_mask = torch.rand_like(images, device=images.device)
 
         index = random.randint(0, num_images-1)
-        for t in tqdm(self.scheduler.timesteps):
-            model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.ones(num_images, device=images.device) * t)
 
-            noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
+        self.model.eval()
+        with torch.no_grad():
+            for t in tqdm(self.scheduler.timesteps):
+                model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.ones(num_images, device=images.device) * t)
 
-            if t % 100 == 0:
-                mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
-                wandb.log({"step_images": mask_step})
+                noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
 
-            
-        
+                if t % 100 == 0:
+                    mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
+                    wandb.log({"step_images": mask_step})
+
+        self.model.train()
+
         pred_masks = torch.where(noisy_mask.clamp(0, 1) > 0.5, 1.0, 0.0)
         val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
 
@@ -260,129 +263,3 @@ class DDPM(pl.LightningModule):
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
     
-    
-
-
-
-        
-
-
-        
-        
-
-
-    
-    
-    
-
-
-        
-
-
-
-
-
-
-"""
-
-class DiffusionModel(pl.LightningModule):
-    def __init__(self, model: torch.nn.Module, config: DiffusionConfig):
-        super().__init__()
-        self.model = model
-
-        self.noise_steps = config.noise_steps
-        self.beta_start = config.beta_start
-        self.beta_end = config.beta_end
-        self.img_size = config.img_size
-        self.device = config.device
-
-        self.beta = self.linear_scheduler().to(self.device)
-        self.alpha = 1. - self.beta
-        self.alpha_hat = torch.cumprod(self.alpha, dim=0)
-
-        self.loss_fn = torch.nn.MSELoss()
-
-    def linear_scheduler(self):
-        return torch.linspace(self.beta_start, self.beta_end, self.noise_steps)
-    
-    def add_noise_to_images(self, images: torch.Tensor, t: int):
-        noise = torch.randn_like(images)
-        return torch.sqrt(self.alpha_hat[t]).item() * images + noise * torch.sqrt(1 - self.alpha_hat[t]).item(), noise
-
-    def sample_timesteps(self, n):
-        return torch.randint(low=1, high=self.noise_steps, size=(n,))
-
-    def training_step(self, batch: torch.Tensor):
-        
-        Args:
-            batch: 4D tensor of shape (B, C, H, W)
-            PS: Currently the model expects C=1
-        
-
-        assert(batch.shape[1] == 1, "Channel dimension should be 1")
-
-        num_images = batch.shape[0]
-        segmentation_shape = batch.shape[2:] # height and width of the image
-        noise = torch.randn((num_images, *segmentation_shape), device=self.device)
-
-        timesteps = self.sample_timesteps(num_images)
-        noisy_images, noise = self.add_noise_to_images(batch, timesteps)
-
-        concatentated_images = torch.cat((noisy_images, batch), dim=1)
-        predicted_noise = self.model(concatentated_images, timesteps)
-        loss = self.loss_fn(predicted_noise, noise)
-
-        return loss
-    
-
-    def validation_step(self,batch,batch_idx):
-        pass
-        
-    
-    def p_mean_variance(self, x, t, clip_denoised)
-
-    def sample(self, batch: torch.Tensor):
-        
-        Args:
-            batch: 4D tensor of shape (B, C, H, W)
-            PS: Currently the model expects C=1
-        
-
-        assert(batch.shape[1] == 1, "Channel dimension should be 1")
-
-        self.model.eval()
-        num_images = batch.shape[0]
-        segmentation_shape = batch.shape[2:]
-
-        with torch.no_grad():
-
-            sampled_images = torch.randn((num_images, *segmentation_shape), device=self.device)
-            
-            for t in range(self.noise_steps - 1, 0):
-                timesteps = (torch.ones(num_images) * t).long().to(self.device)
-                concatenated_images = torch.cat((sampled_images, batch), dim=1)
-                predicted_noise = self.model(concatenated_images, timesteps)
-
-                if t > 1:
-                    noise = torch.randn_like(sampled_images)
-                else:
-                    noise = torch.zeros_like(sampled_images)
-
-                alpha_t_sqrt = math.sqrt(self.alpha_hat[t].item())
-                beta_t = self.beta[t].item()
-                alpha_head_t = math.sqrt(1 - self.alpha_hat[t].item())
-
-                images = 1.0 / alpha_t_sqrt (sampled_images - (beta_t / alpha_head_t) * predicted_noise) + math.sqrt(beta_t) * noise
-
-        self.model.train()
-
-        images = torch.clamp(images, -1, 1) + 1 / 2
-        images = (images * 255).type(torch.uint8)
- 
-        return images
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.02)
-
-
-"""
