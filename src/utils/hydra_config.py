@@ -39,6 +39,7 @@ class DatasetConfig:
 
 class DataloaderConfig:
     batch_size: int
+    val_batch_size: int
     shuffle: bool
     train_ratio: float
     validation_ratio: float

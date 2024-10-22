@@ -18,7 +18,10 @@ class DmiiseSegmentation(BaseSegmentation):
 
     def create_model(self):
         from modules.unet import UNetModel
+        from monai.networks.nets import BasicUNet
         return UNetModel(self.config.model)
+    
+        # return BasicUNet(spatial_dims=2, features=[32, 64, 128, 256, 512, 32], dropout=0.2, in_channels=1, out_channels=1)
     
     def create_diffusion(self, model: nn.Module, device: str="cpu"):
         from models.dmiise.diffusion import DDPM

@@ -6,6 +6,7 @@ import numpy as np
 from monai.transforms import Resize, Compose
 from array import array
 from torch.utils.data import Dataset
+from torchvision.transforms import Normalize
 
 from utils.hydra_config import DatasetConfig
 
@@ -75,12 +76,15 @@ class M2NISTDataset(Dataset):
     segmentations: torch.Tensor
 
     def __init__(self, config: DatasetConfig):
+        self.norm = Normalize([0.5], [0.5])
         segmentations = torch.from_numpy(np.load(os.path.join(config.data_path, 'segmented.npy'))[:, :, :, -1])
         data = torch.from_numpy(np.load(os.path.join(config.data_path, 'combined.npy')))
+
         self.segmentations = self.prepare_data(data=segmentations, image_size=config.image_size)
+        # self.segmentations = torch.where(self.segmentations == 1.0, -1.0, 1.0)
         self.data = self.prepare_data(data=data, image_size=config.image_size, normalize=config.normalize, mode=(config.mode or 'bilinear'))
 
-
+        
     def prepare_data(self, data: torch.Tensor, image_size: tuple[int, int] = None, normalize: bool = False, mode: str = 'nearest'):
         if image_size is not None:
             resize_fn = Resize(spatial_size=image_size, mode=mode)
@@ -88,6 +92,11 @@ class M2NISTDataset(Dataset):
         
         if normalize:
             data = data / 255.0
+            data = self.norm(data)
+        
+        print(f"data min: {torch.min(data)}")
+        print(f"data max: {torch.max(data)}")
+
         return data.type(torch.float32).unsqueeze(1)
 
     def __len__(self):

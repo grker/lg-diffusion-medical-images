@@ -95,10 +95,19 @@ def load_res_to_wandb(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: tor
             masks={
                 "predictions": {
                     "mask_data": pred_mask,
-                    "class_labels": {0: "foreground", 1: "background"},
+                    "class_labels": {0: "background", 1: "foreground"},
                 }
             },
             caption=caption
         )
+    
+
+def create_wandb_image(image: torch.Tensor, caption: str=""):
+    image = torch_to_2d_numpy(image)
+
+    return wandb.Image(
+        image,
+        caption=caption
+    )
 
     

@@ -82,6 +82,7 @@ def main(config: SegmentationConfig):
         )
 
         trainer.fit(seg_model, train_loader, val_loader)
+        trainer.test(seg_model, test_loader)
 
 
 

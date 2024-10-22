@@ -63,8 +63,8 @@ class BaseSegmentation:
         train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
         train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=config.shuffle)
-        val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
-        test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+        val_loader = DataLoader(val_dataset, batch_size=config.val_batch_size, shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_size=config.val_batch_size, shuffle=False)
         
         return train_loader, val_loader, test_loader
     
@@ -89,9 +89,6 @@ class BaseSegmentation:
     def initialize(self) -> pl.LightningModule:
         raise NotImplementedError("Initialize methode not implemented")
 
-
-    
-    
     
     def train(self):
         raise NotImplementedError("Train method not implemented")

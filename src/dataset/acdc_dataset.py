@@ -46,7 +46,8 @@ class ACDCDataset(Dataset):
         self.gt = torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)
 
         if not self.multiclass:
-            self.gt = (self.gt > 0).type(torch.float32)
+            self.gt = torch.where(self.gt > 0, 0.0, 1.0).type(torch.float32)
+            
 
         print(f"shape of data: {self.data.shape}")
         print(f"shape of data: {self.gt.shape}")
@@ -65,14 +66,14 @@ class ACDCDataset(Dataset):
                 data_patient, gt_patient = self.load_patient(patient_path)
                 data_patient, gt_patient, max_value = self.normalize_and_augment_patient_data(data_patient, gt_patient)
 
-                self.idx_to_patient.append(index)
-                self.patient_metadata.append({
-                    'patient': patient,
-                    'startIdx': index,
-                    'frames': data_patient.shape[0],
-                    'max': max_value,
-                })
-                index += data_patient.shape[0]
+                # self.idx_to_patient.append(index)
+                # self.patient_metadata.append({
+                #     'patient': patient,
+                #     'startIdx': index,
+                #     'frames': data_patient.shape[0],
+                #     'max': max_value,
+                # })
+                # index += data_patient.shape[0]
 
                 data = torch.cat((data, data_patient), dim=0)
                 gt = torch.cat((gt, gt_patient), dim=0)

@@ -11,7 +11,7 @@ from diffusers.schedulers import DDPMScheduler
 from diffusers.optimization import get_cosine_schedule_with_warmup
 
 from utils.hydra_config import DiffusionConfig, OptimizerConfig
-from utils.visualize import visualize_sampling_res, load_res_to_wandb
+from utils.visualize import visualize_sampling_res, load_res_to_wandb, create_wandb_image
 from monai.losses import DiceLoss, DiceCELoss
 from utils.metrics import compute_and_log_metrics
 
@@ -243,9 +243,9 @@ class DDPM(pl.LightningModule):
 
                 noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
 
-                if t % 100 == 0:
-                    mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
-                    wandb.log({"step_images": mask_step})
+                # if t < 200 and t % 20 == 0:
+                #     mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
+                #     wandb.log({"step_images": mask_step})
 
         self.model.train()
 
@@ -253,9 +253,58 @@ class DDPM(pl.LightningModule):
         val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
 
         wandb.log({"val_examples": val_images})
+        mask_image = create_wandb_image(pred_masks[index])
+        gt_image = create_wandb_image(gt_masks[index])
+
+        wandb.log({"pred_masks": mask_image})
+        wandb.log({"gt_masks": gt_image})
+
         compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
 
+        # pred_masks = torch.where(noisy_mask.clamp(-1, 1) > 0.0, 1.0, 0.0)
+        # print(f"distribution of pred mask: {torch.histc(pred_masks[index], bins=10, min=0, max=1)}")
+        # print(f"how many ones: {(pred_masks[index] == 1.0).sum()}")
+        # val_images = load_res_to_wandb(images[index], gt_masks[index] < 0, pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
+        # wandb.log({"val_examples": val_images})
+        
+        print(f"max bevor clamping: {torch.max(noisy_mask[index])}")
+        print(f"min bevor clamping: {torch.min(noisy_mask[index])}")
+
+        final_pic = (noisy_mask.clamp(-1, 1) + 1)/2
+        final_img = create_wandb_image(final_pic[index], caption=f"{batch_idx}_{index} at step {t}")
+        wandb.log({"final pic": final_img})
+
+        print(f"histogram of final pic: {torch.histc(final_pic[index], bins=10, min=0, max=1)}")
+        print(f"max after clamping: {torch.max(final_pic[index])}")
+        print(f"min after clamping: {torch.min(final_pic[index])}")
+
+        # compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
+
         return 0
+    
+
+    def test_step(self, batch, batch_idx):
+        images, gt_masks = batch
+        num_images = images.shape[0]
+        noisy_mask = torch.rand_like(images, device=images.device)
+
+        index = random.randint(0, num_images-1)
+
+        self.model.eval()
+        with torch.no_grad():
+            for t in tqdm(self.scheduler.timesteps):
+                model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.ones(num_images, device=images.device) * t)
+
+                noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
+
+
+        self.model.train()
+
+        pred_masks = torch.where(noisy_mask.clamp(0, 1) > 0.5, 1.0, 0.0)
+        val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
+
+        wandb.log({"test_examples": val_images})
+        compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "test", self.log)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.optimizer_config.lr)
