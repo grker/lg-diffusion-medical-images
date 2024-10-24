@@ -22,6 +22,8 @@ class DiffusionConfig:
     scheduler_type: str
     device: str
     var_learned: bool
+    repetitions: int
+    threshold: float
 
 class LDSegConfig:
     resnet: ResNetConfig
@@ -35,6 +37,7 @@ class DatasetConfig:
     normalize: bool
     mode: str
     multiclass: bool
+    switch: int
 
 
 class DataloaderConfig:

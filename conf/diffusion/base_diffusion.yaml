@@ -4,5 +4,7 @@ beta_end: 0.02
 scheduler_type: linear
 device: cpu
 var_learned: False
+repetitions: 1
+threshold: 0.0
 
 

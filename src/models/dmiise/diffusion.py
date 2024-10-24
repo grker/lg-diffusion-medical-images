@@ -5,6 +5,7 @@ import random
 import wandb
 
 import torch.nn as nn
+from torch.utils.data import Dataset
 
 from tqdm import tqdm
 from diffusers.schedulers import DDPMScheduler
@@ -209,17 +210,58 @@ class DDPM(pl.LightningModule):
         self.model = model
         self.optimizer_config = optimizer_config
         self.metrics = metrics
+        self.repetitions = diffusion_config.repetitions
+        self.threshold = diffusion_config.threshold
 
         self.loss_fn = torch.nn.MSELoss()
 
+    def noise_tester(self, dataset: Dataset, batch_size: int, device="cuda"):
+        samples = len(dataset)
+        batch_start_idx = 0
+
+        flatt_values = torch.empty(0).to(device)
+        loss_fn = torch.nn.MSELoss(reduction='mean')
+        
+        while batch_start_idx < samples:
+            end_idx = min(batch_start_idx + batch_size, samples)
+            images, masks = dataset[batch_start_idx:end_idx]
+            batch = masks.to(device)
+
+            print(f"number of pixels: {batch.shape[0] * batch.shape[1]*batch.shape[2]*batch.shape[3]}")
+            print(f"batch histo before: {torch.histc(batch, bins=10, min=0, max=1)}")
+
+            noise = torch.randn_like(batch, device=batch.device)
+            timesteps = torch.full((noise.shape[0],), self.scheduler.config.num_train_timesteps-1).to(batch.device)
+            noisy_batch = self.scheduler.add_noise(batch, noise, timesteps)
+            flatt_batch = torch.flatten(noisy_batch)
+
+            
+            for t in tqdm(self.scheduler.timesteps):
+                noisy_batch = self.scheduler.step(model_output=noise, timestep=t, sample=noisy_batch).prev_sample
+            
+            flatt_values = torch.cat((flatt_values,flatt_batch), dim=0)
+            batch_start_idx = batch_start_idx + batch_size
+
+            print(f"batch histo after: {torch.histc(noisy_batch, bins=10, min=0, max=1)}")
+            print(f"loss fn: {loss_fn(noisy_batch, batch)}")
+
+            
+
+        values = flatt_values.shape[0] 
+        print(f"flatt values shape: {flatt_values.shape}")
+
+        print(f"mean: {torch.mean(flatt_values)}")
+        print(f"std: {torch.std(flatt_values)}")
+
+
 
     def training_step(self, batch, batch_idx):
-        images, gt_masks = batch
-        num_images = gt_masks.shape[0]
-        noise = torch.randn_like(gt_masks, device=gt_masks.device)
+        images, gt_masks, gt_masks_train = batch
+        num_images = gt_masks_train.shape[0]
+        noise = torch.randn_like(gt_masks_train, device=gt_masks.device)
 
         timesteps = torch.randint(0, self.scheduler.config.num_train_timesteps, (num_images,), device=gt_masks.device, dtype=torch.int64)
-        noisy_image = self.scheduler.add_noise(gt_masks, noise, timesteps)
+        noisy_image = self.scheduler.add_noise(gt_masks_train, noise, timesteps)
 
         pred_noise = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
 
@@ -229,27 +271,103 @@ class DDPM(pl.LightningModule):
         return loss
     
 
+    # def validation_step(self, batch, batch_idx):
+    #     images, gt_masks = batch
+        
+    #     num_images = images.shape[0]
+    #     noisy_mask = torch.rand_like(images, device=images.device)
+
+    #     index = random.randint(0, num_images-1)
+
+    #     self.model.eval()
+    #     ensemble_mask = torch.zeros_like(images, device=images.device)
+    #     with torch.no_grad():
+    #         for reps in range(self.repetitions):
+    #             noisy_mask = torch.rand_like(images, device=images.device)
+
+    #             for t in tqdm(self.scheduler.timesteps):
+    #                 model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_images,), t, device=images.device))
+
+    #                 noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
+
+    #                 # if t < 200 and t % 20 == 0:
+    #                 #     mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
+    #                 #     wandb.log({"step_images": mask_step})
+
+    #             print(f"max bevor clamping: {torch.max(noisy_mask[index])}")
+    #             print(f"min bevor clamping: {torch.min(noisy_mask[index])}")
+    #             ensemble_mask = torch.add(ensemble_mask, noisy_mask)
+    #     self.model.train()
+
+    #     ensemble_mask = ensemble_mask/self.repetitions
+        
+        
+    #     pred_masks = torch.where((ensemble_mask).clamp(0, 1) > self.threshold, 1.0, 0.0)
+    #     val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
+
+    #     wandb.log({"val_examples": val_images})
+    #     mask_image = create_wandb_image(pred_masks[index])
+    #     gt_image = create_wandb_image(gt_masks[index])
+
+    #     wandb.log({"pred_masks": mask_image})
+    #     wandb.log({"gt_masks": gt_image})
+
+    #     compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
+
+    #     # pred_masks = torch.where(noisy_mask.clamp(-1, 1) > 0.0, 1.0, 0.0)
+    #     # print(f"distribution of pred mask: {torch.histc(pred_masks[index], bins=10, min=0, max=1)}")
+    #     # print(f"how many ones: {(pred_masks[index] == 1.0).sum()}")
+    #     # val_images = load_res_to_wandb(images[index], gt_masks[index] < 0, pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
+    #     # wandb.log({"val_examples": val_images})
+        
+    #     print(f"max bevor clamping ens: {torch.max(ensemble_mask[index])}")
+    #     print(f"min bevor clamping ens: {torch.min(ensemble_mask[index])}")
+
+    #     final_pic = ensemble_mask.clamp(0, 1)
+    #     final_img = create_wandb_image(final_pic[index], caption=f"{batch_idx}_{index} at step {t}")
+    #     wandb.log({"final pic": final_img})
+
+    #     print(f"histogram of final pic: {torch.histc(final_pic[index], bins=10, min=0, max=1)}")
+    #     print(f"max after clamping: {torch.max(final_pic[index])}")
+    #     print(f"min after clamping: {torch.min(final_pic[index])}")
+
+    #     # compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
+
+    #     return 0
+    
+
     def validation_step(self, batch, batch_idx):
-        images, gt_masks = batch
+        images, gt_masks, gt_masks_train = batch
+        
         num_images = images.shape[0]
         noisy_mask = torch.rand_like(images, device=images.device)
 
         index = random.randint(0, num_images-1)
 
         self.model.eval()
+        ensemble_mask = torch.zeros_like(images, device=images.device)
         with torch.no_grad():
-            for t in tqdm(self.scheduler.timesteps):
-                model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.ones(num_images, device=images.device) * t)
+            for reps in range(self.repetitions):
+                noisy_mask = torch.rand_like(images, device=images.device)
 
-                noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
+                for t in tqdm(self.scheduler.timesteps):
+                    model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_images,), t, device=images.device))
 
-                # if t < 200 and t % 20 == 0:
-                #     mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
-                #     wandb.log({"step_images": mask_step})
+                    noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
 
+                    # if t < 200 and t % 20 == 0:
+                    #     mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
+                    #     wandb.log({"step_images": mask_step})
+
+                print(f"max bevor clamping: {torch.max(noisy_mask)}")
+                print(f"min bevor clamping: {torch.min(noisy_mask)}")
+                ensemble_mask = torch.add(ensemble_mask, noisy_mask)
         self.model.train()
 
-        pred_masks = torch.where(noisy_mask.clamp(0, 1) > 0.5, 1.0, 0.0)
+        ensemble_mask = ensemble_mask/self.repetitions
+        
+        
+        pred_masks = torch.where(ensemble_mask > self.threshold, 1.0, 0.0)
         val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
 
         wandb.log({"val_examples": val_images})
@@ -267,10 +385,13 @@ class DDPM(pl.LightningModule):
         # val_images = load_res_to_wandb(images[index], gt_masks[index] < 0, pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
         # wandb.log({"val_examples": val_images})
         
-        print(f"max bevor clamping: {torch.max(noisy_mask[index])}")
-        print(f"min bevor clamping: {torch.min(noisy_mask[index])}")
+        print(f"max bevor clamping ens: {torch.max(ensemble_mask[index])}")
+        print(f"min bevor clamping ens: {torch.min(ensemble_mask[index])}")
 
-        final_pic = (noisy_mask.clamp(-1, 1) + 1)/2
+        # final_pic = ((ensemble_mask + 1) / 2).clamp(0,1)
+        final_pic = (ensemble_mask).clamp(0,1)
+
+
         final_img = create_wandb_image(final_pic[index], caption=f"{batch_idx}_{index} at step {t}")
         wandb.log({"final pic": final_img})
 
@@ -284,7 +405,7 @@ class DDPM(pl.LightningModule):
     
 
     def test_step(self, batch, batch_idx):
-        images, gt_masks = batch
+        images, gt_masks, gt_masks_train = batch
         num_images = images.shape[0]
         noisy_mask = torch.rand_like(images, device=images.device)
 
@@ -300,7 +421,7 @@ class DDPM(pl.LightningModule):
 
         self.model.train()
 
-        pred_masks = torch.where(noisy_mask.clamp(0, 1) > 0.5, 1.0, 0.0)
+        pred_masks = torch.where(noisy_mask > self.threshold, 1.0, 0.0)
         val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
 
         wandb.log({"test_examples": val_images})

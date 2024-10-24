@@ -3,6 +3,7 @@ import os
 import nibabel as nib
 import numpy as np
 import cv2
+from torchvision.transforms import Normalize
 
 from torch.utils.data import Dataset
 from utils.hydra_config import DatasetConfig
@@ -30,30 +31,40 @@ class ACDCDataset(Dataset):
         self.normalize = config.normalize
         self.mode = config.mode
         self.multiclass = config.multiclass
+        self.switch = config.switch
         self.patient_metadata = []
         self.load_data()
+
 
 
     def load_data(self):
         training_data, training_gt = self.load_patients(self.training_folder)
         testing_data, testing_gt = self.load_patients(self.testing_folder)
 
+        self.norm = Normalize(mean=[0.5], std=[0.5])
+
         self.training_samples = training_data.shape[0]
         self.test_samples = testing_data.shape[0]
         self.ratio = self.training_samples / (self.training_samples + self.test_samples)  
 
         self.data = torch.cat((training_data, testing_data), dim=0).unsqueeze(1).type(dtype=torch.float32)
+        # self.data = self.norm(self.data)
         self.gt = torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)
-
+        self.gt_train = None
         if not self.multiclass:
-            self.gt = torch.where(self.gt > 0, 0.0, 1.0).type(torch.float32)
-            
+            self.gt = torch.where(self.gt > 0, 1.0, 0.0).type(torch.float32)
+            if self.switch == 1:
+                self.gt_train = torch.where(self.gt > 0, 0.0, 1.0).type(torch.float32)
+            elif self.switch == 0:
+                self.gt_train = torch.where(self.gt > 0, 1.0, 0.0).type(torch.float32)
+            elif self.switch == -1:
+                self.gt_train = torch.where(self.gt > 0, 1.0, -1.0).type(torch.float32)
+            elif self.switch == 2:
+                self.gt_train = torch.where(self.gt > 0, 2.0, 1.0).type(torch.float32)
+            else:
+                self.gt_train = self.gt
 
-        print(f"shape of data: {self.data.shape}")
-        print(f"shape of data: {self.gt.shape}")
-
-        print(f"type of data: {self.data.type()}")
-        print(f"type of gt: {self.gt.type()}")
+        print(f"histogram of gt train: {torch.histc(self.gt_train, bins=10, min=-1, max=1)}")
 
 
     def load_patients(self, folder_path):
@@ -104,8 +115,6 @@ class ACDCDataset(Dataset):
             data_tmp, gt_tmp = self.load_frame(patient_path, frame)
             data_patient = torch.cat((data_patient, data_tmp), dim=0) 
             gt_patient = torch.cat((gt_patient, gt_tmp), dim=0)
-
-        print(f"data patient shape: {data_patient.shape}")
         
         return data_patient, gt_patient
         
@@ -145,7 +154,8 @@ class ACDCDataset(Dataset):
         return self.data.shape[0]
 
     def __getitem__(self, idx):
-        return self.data[idx], self.gt[idx]
+        # return self.data[idx], self.gt[idx]
+        return self.data[idx], self.gt[idx], self.gt_train[idx]
 
     def get_image_size(self):
         return self.data.shape[1:]
@@ -155,6 +165,9 @@ class ACDCDataset(Dataset):
     
     def get_image_width(self):
         return self.data.shape[3]
+    
+    def get_switch(self):
+        return self.switch
 
 
     

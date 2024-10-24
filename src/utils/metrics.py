@@ -32,7 +32,9 @@ def compute_and_log_metrics(metric_fns: dict, pred: torch.Tensor, gt: torch.Tens
         print(f"compute metric: {metric_name}")
         try: 
             score = metric_fn(pred, gt)
-            print(f"score not meaned: {score}")
+            nan_indices = torch.nonzero(~torch.isnan(score), as_tuple=True)[0]
+            score = score[nan_indices]
+
             score = score.mean().item()
             print(f"found score: {score}")
             logger(f"{phase}_{str(metric_name)}", score)

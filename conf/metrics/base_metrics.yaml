@@ -3,3 +3,5 @@ metric_fns_config:
     include_background: False
     reduction: mean
   HausdorffDistanceMetric:
+    include_background: False
+    percentile: 95

@@ -81,7 +81,7 @@ class M2NISTDataset(Dataset):
         data = torch.from_numpy(np.load(os.path.join(config.data_path, 'combined.npy')))
 
         self.segmentations = self.prepare_data(data=segmentations, image_size=config.image_size)
-        # self.segmentations = torch.where(self.segmentations == 1.0, -1.0, 1.0)
+        self.segmentations = torch.where(self.segmentations == 1.0, 0.0, 1.0)
         self.data = self.prepare_data(data=data, image_size=config.image_size, normalize=config.normalize, mode=(config.mode or 'bilinear'))
 
         
@@ -92,10 +92,7 @@ class M2NISTDataset(Dataset):
         
         if normalize:
             data = data / 255.0
-            data = self.norm(data)
-        
-        print(f"data min: {torch.min(data)}")
-        print(f"data max: {torch.max(data)}")
+            # data = self.norm(data)
 
         return data.type(torch.float32).unsqueeze(1)
 
