@@ -1,13 +1,13 @@
 
 import pytorch_lightning as pl
+import torch
 
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data import random_split
 from utils.metrics import generate_metrics_fn
-import torch
-import torch.nn as nn
 from utils.hydra_config import DatasetConfig, DataloaderConfig, UNetConfig, DiffusionConfig, SegmentationConfig, MetricsConfig
+from utils.loss import CustomLoss
 
 
 def create_segmentor(config: SegmentationConfig):
@@ -77,14 +77,8 @@ class BaseSegmentation:
         metrics = generate_metrics_fn(self.config.metrics)
         return metrics
     
-    # def create_segmentation_model(self) -> pl.LightningModule:
-    #     raise NotImplementedError("Model creation method not implemented")
-
-    # def create_model(self, config: UNetConfig):
-    #     raise NotImplementedError("Model creation method not implemented")
-    
-    # def create_diffusion(self, config: DiffusionConfig, model: nn.Module):
-    #     raise NotImplementedError("Diffusion creation method not implemented")
+    def create_loss(self):
+        return CustomLoss(self.config.loss)
     
     def initialize(self) -> pl.LightningModule:
         raise NotImplementedError("Initialize methode not implemented")

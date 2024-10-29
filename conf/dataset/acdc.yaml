@@ -4,4 +4,11 @@ image_size: [200, 200]
 normalize: True
 mode: bilinear
 multiclass: False
-switch: -1
+mapping_type: "binary"
+mapping_gt:
+  foreground: 1
+  background: 0
+mapping_train:
+  foreground: 0
+  background: 1
+

@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import torch
 import wandb
+import random
+import time
 import numpy as np
 
 from PIL import Image
@@ -66,13 +68,15 @@ def torch_to_2d_numpy(tensor: torch.Tensor):
 
     return tensor.numpy()
 
-def load_res_to_wandb(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: torch.Tensor, caption: str=""):
+def load_res_to_wandb(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: torch.Tensor, mapping:dict, caption: str=""):
     image = torch_to_2d_numpy(image)
     if gt_mask is not None:
         gt_mask = torch_to_2d_numpy(gt_mask) + 2
     
     pred_mask = torch_to_2d_numpy(pred_mask)
     dens, edges = np.histogram(pred_mask)
+
+    class_labels = {}
 
     if gt_mask is not None: 
         return wandb.Image(
@@ -110,4 +114,64 @@ def create_wandb_image(image: torch.Tensor, caption: str=""):
         caption=caption
     )
 
+def create_wandb_mask_visualization(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: torch.Tensor, mapping:dict, caption: str=""):
+    offset = mapping["offset"]
+
+    image = torch_to_2d_numpy(image)
+    if gt_mask is not None:
+        gt_mask = torch_to_2d_numpy(gt_mask)
     
+    pred_mask = torch_to_2d_numpy(pred_mask) + offset
+
+    if gt_mask is not None: 
+        return wandb.Image(
+            image,
+            masks={
+                "predictions": {
+                    "mask_data": pred_mask,
+                    "class_labels": mapping["class_labels_pred"],
+                },
+                "ground_truth": {
+                    "mask_data": gt_mask,
+                    "class_labels": mapping["class_labels"],
+                },
+            },
+            caption=caption
+        )
+    else:
+        return wandb.Image(
+            image,
+            masks={
+                "predictions": {
+                    "mask_data": pred_mask,
+                    "class_labels": mapping["class_labels_pred"],
+                }
+            },
+            caption=caption
+        )
+    
+def normalize(tensor: torch.Tensor):
+    assert(len(tensor.shape) == 3)
+    return (tensor - torch.min(tensor)) / (torch.max(tensor) - torch.min(tensor))
+    
+def visualize_segmentation(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: torch.Tensor, before_threshold: torch.Tensor, phase: str, mapping: dict, batch_idx: int, img_index_list: list[int]=None):
+    if img_index_list is None:
+        img_index_list = [random.randint(0, image.shape[0]-1)]
+
+    
+    for img_index in img_index_list:
+        caption = f"BatchIdx_{batch_idx}_ImageIdx_{img_index}"
+        mask_vis = create_wandb_mask_visualization(image[img_index], gt_mask[img_index], pred_mask[img_index], mapping, caption)
+        pred_mask_wandb = create_wandb_image(pred_mask[img_index], caption)
+        gt_mask_wandb = create_wandb_image(gt_mask[img_index], caption)
+        before_threshold = create_wandb_image(normalize(before_threshold[img_index]), caption)
+        
+        wandb.log({f"{phase}_mask_comparison": mask_vis})
+        wandb.log({f"{phase}_pred_mask": pred_mask_wandb})
+        wandb.log({f"{phase}_gt_mask": gt_mask_wandb})
+        wandb.log({f"{phase}_before_threshold": before_threshold})
+
+
+
+
+   

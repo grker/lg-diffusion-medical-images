@@ -7,6 +7,7 @@ from torchvision.transforms import Normalize
 
 from torch.utils.data import Dataset
 from utils.hydra_config import DatasetConfig
+from utils.mask_transformer import generate_mask_mapping, BaseMaskMapping
 
 
 class ACDCDataset(Dataset):
@@ -23,6 +24,8 @@ class ACDCDataset(Dataset):
     test_samples: int
     ratio: float
 
+    mask_transformer: BaseMaskMapping
+
     def __init__(self, config: DatasetConfig):
         self.training_folder = os.path.join(config.data_path, 'training')
         self.testing_folder = os.path.join(config.data_path, 'testing')
@@ -31,10 +34,11 @@ class ACDCDataset(Dataset):
         self.normalize = config.normalize
         self.mode = config.mode
         self.multiclass = config.multiclass
-        self.switch = config.switch
         self.patient_metadata = []
-        self.load_data()
 
+        self.mask_transformer = generate_mask_mapping(config.mapping_type, config.mapping_gt, config.mapping_train)
+
+        self.load_data()
 
 
     def load_data(self):
@@ -48,21 +52,10 @@ class ACDCDataset(Dataset):
         self.ratio = self.training_samples / (self.training_samples + self.test_samples)  
 
         self.data = torch.cat((training_data, testing_data), dim=0).unsqueeze(1).type(dtype=torch.float32)
-        # self.data = self.norm(self.data)
-        self.gt = torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)
-        self.gt_train = None
-        if not self.multiclass:
-            self.gt = torch.where(self.gt > 0, 1.0, 0.0).type(torch.float32)
-            if self.switch == 1:
-                self.gt_train = torch.where(self.gt > 0, 0.0, 1.0).type(torch.float32)
-            elif self.switch == 0:
-                self.gt_train = torch.where(self.gt > 0, 1.0, 0.0).type(torch.float32)
-            elif self.switch == -1:
-                self.gt_train = torch.where(self.gt > 0, 1.0, -1.0).type(torch.float32)
-            elif self.switch == 2:
-                self.gt_train = torch.where(self.gt > 0, 2.0, 1.0).type(torch.float32)
-            else:
-                self.gt_train = self.gt
+        
+        self.gt = self.mask_transformer.preprocess_gt_mask(torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)).type(dtype=torch.float32)
+        self.gt_train = self.mask_transformer.to_train_mask(self.gt)
+        
 
         print(f"histogram of gt train: {torch.histc(self.gt_train, bins=10, min=-1, max=1)}")
 

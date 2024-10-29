@@ -4,6 +4,7 @@ defaults:
   - model: unet_dmisse
   - diffusion: base_diffusion
   - trainer: base_trainer
+  - loss: mse_loss
   - metrics: base_metrics
   - optimizer: base_optimizer
   - _self_

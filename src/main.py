@@ -45,22 +45,8 @@ def main(config: SegmentationConfig):
     print(f"Is cuda available: {torch.cuda.is_available()}")
     print(f"uses device: {torch.cuda.current_device()}")
     
-
     segmentor = create_segmentor(config)
     seg_model, train_loader, val_loader, test_loader = segmentor.initialize()
-    # dataset, dataloader = segmentor.create_dataset_dataloader(config.dataset, config.dataloader)
-    # train_loader, val_loader, test_loader = dataloader
-    # image_height, image_width = dataset.get_image_height(), dataset.get_image_width()
-
-    # with open_dict(config.model):
-    #     config.model.image_size = (image_height, image_width)
-    #     config.diffusion.img_size = (image_height, image_width)
-
-    # model = segmentor.create_model(config.model)
-    # diffusion = segmentor.create_diffusion(config.diffusion, model)
-
-    # segmentation_model = segmentor.create_segmentation_model(config)
-    
     
     print(f"Initialization done.")
     if config.train:
@@ -68,7 +54,7 @@ def main(config: SegmentationConfig):
             max_epochs=config.trainer.max_epochs,
             enable_progress_bar=True,
             callbacks=[],
-            check_val_every_n_epoch=10,
+            check_val_every_n_epoch=20,
             log_every_n_steps=1,
             enable_checkpointing=True,
             benchmark=True,

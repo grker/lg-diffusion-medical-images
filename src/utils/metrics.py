@@ -14,7 +14,6 @@ def generate_metrics_fn(config: MetricsConfig):
         if kwargs is None:
             kwargs = {}
         
-        print(f"building metric with arguments: {kwargs}")
         if hasattr(torch.nn, name):
             metric_fns[name] = getattr(torch.nn, name)(**kwargs)
         elif hasattr(monai.metrics, name):
@@ -29,14 +28,12 @@ def compute_and_log_metrics(metric_fns: dict, pred: torch.Tensor, gt: torch.Tens
     scores = {}
 
     for metric_name, metric_fn in metric_fns.items():
-        print(f"compute metric: {metric_name}")
         try: 
             score = metric_fn(pred, gt)
             nan_indices = torch.nonzero(~torch.isnan(score), as_tuple=True)[0]
             score = score[nan_indices]
 
             score = score.mean().item()
-            print(f"found score: {score}")
             logger(f"{phase}_{str(metric_name)}", score)
         except Exception as e:
             print(f"{metric_fn} cannot be computed. Received Error: {str(e)}")

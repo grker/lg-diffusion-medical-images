@@ -24,6 +24,10 @@ class DiffusionConfig:
     var_learned: bool
     repetitions: int
     threshold: float
+    prediction_type: str
+    num_inference_steps: int
+    clip_range: int
+    
 
 class LDSegConfig:
     resnet: ResNetConfig
@@ -37,7 +41,9 @@ class DatasetConfig:
     normalize: bool
     mode: str
     multiclass: bool
-    switch: int
+    mapping_type: str
+    mapping_gt: dict
+    mapping_train: dict
 
 
 class DataloaderConfig:
@@ -73,6 +79,13 @@ class UNetConfig(ModelConfig):
     resblock_updown: bool
     use_new_attention_order: bool
 
+class Loss:
+    scale: float
+    args: dict
+
+class LossConfig:
+    loss_fns_config: dict[str, Loss]
+    log_loss_parts: bool
 
 class MetricsConfig:
     metric_fns_config: dict
@@ -90,9 +103,10 @@ class SegmentationConfig:
     diffusion: DiffusionConfig
     trainer: TrainerConfig
     metrics: MetricsConfig
+    loss: LossConfig
     optimizer: OptimizerConfig
     train: bool
     model_path: str
     wandb_tags: list[str]
-    seed: int
+    seed: int 
 
