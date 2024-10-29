@@ -98,8 +98,8 @@ class DDPM(pl.LightningModule):
         images, gt_masks, gt_train_masks = self.unpack_batch(batch)
         num_samples = images.shape[0]
 
-        noise = torch.randn_like(gt_train_masks, device=gt_masks.device)
-        timesteps = torch.randint(0, self.scheduler.config.num_train_timesteps, (num_samples,), device=gt_masks.device, dtype=torch.int64)
+        noise = torch.randn_like(gt_train_masks, device=gt_train_masks.device)
+        timesteps = torch.randint(0, self.scheduler.config.num_train_timesteps, (num_samples,), device=gt_train_masks.device, dtype=torch.int64)
         noisy_image = self.scheduler.add_noise(gt_train_masks, noise, timesteps)
         
         prediction = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
@@ -107,6 +107,8 @@ class DDPM(pl.LightningModule):
         loss = 0.0
         if self.prediction_type == "epsilon":
             loss = self.loss_fn(prediction, noise)
+        elif self.prediction_type == "sample":
+            loss = self.loss_fn(prediction, gt_train_masks)
         
         self.log('train_loss', loss)
 
@@ -120,7 +122,6 @@ class DDPM(pl.LightningModule):
     def test_step(self,batch,batch_idx):
         return self.val_test_step(batch,batch_idx,"test")
     
-
 
     def val_test_step(self, batch, batch_idx, phase):
         images, gt_masks, gt_train_masks = self.unpack_batch(batch)

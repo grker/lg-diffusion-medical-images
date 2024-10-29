@@ -32,12 +32,12 @@ def main(config: SegmentationConfig):
     wandb.config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
     wandb.login(key=os.environ["WANDB_API_KEY"])
     wandb.init(
-        project="difseg", config=wandb.config, tags=config.wandb_tags, job_type="train"
+        project="difseg", config=wandb.config, tags=config.wandb_tags, job_type="train", dir=os.path.join(os.path.join(os.getcwd(), ".."), "wandb")
     )
     wandb_logger = WandbLogger(log_model=True)
 
     logdir = os.path.join(
-        os.getcwd(), "lightning_logs", config.project_name, wandb.run.id
+        os.path.join(os.getcwd(), ".."), "lightning_logs", config.project_name, wandb.run.id
     )
     os.makedirs(logdir, exist_ok=True)
     os.system(f"rm -r {logdir}/*")

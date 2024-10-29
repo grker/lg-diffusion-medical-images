@@ -1,0 +1,7 @@
+loss_fns_config:
+  DiceCELoss:
+    scale: 1.0
+    args:
+      include_background: False
+      sigmoid: True
+      reduction: mean
