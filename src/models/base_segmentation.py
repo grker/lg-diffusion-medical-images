@@ -73,8 +73,8 @@ class BaseSegmentation:
         dataset = self.create_dataset(self.config.dataset)
         return dataset, self.create_dataloaders(self.config.dataloader, dataset)
     
-    def create_metrics_fn(self):
-        metrics = generate_metrics_fn(self.config.metrics)
+    def create_metrics_fn(self, num_classes: int=2):
+        metrics = generate_metrics_fn(self.config.metrics, num_classes)
         return metrics
     
     def create_loss(self):

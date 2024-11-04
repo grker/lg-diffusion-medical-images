@@ -1,109 +1,197 @@
-from typing import Union
-
 import torch
+import logging
+
+from utils.hydra_config import MaskTransformerConfig
+
+logger = logging.getLogger(__name__)
+
 
 class BaseMaskMapping:
-    schema = {}
-    foreground_classes: int=1
+    dataset_mapping = dict=None
+    gt_mapping = dict=None
+    num_classes: int # always includes the background
 
-    def check_input(self, dictionary):
-        for key in self.schema:
-            if key not in dictionary:
-                raise KeyError(f"Key {key} not found in the dictionary")
-            elif type(dictionary[key]) != self.schema[key]:
-                raise TypeError(f"Value of Key {key} has type {type(dictionary[key])} but should have been {self.schema[key]}")
-            
-        return dictionary
-    
-    def preprocess_gt_mask(self, mask: torch.Tensor):
-        raise NotImplementedError()
-
-    def to_train_mask(self, mask: torch.Tensor):
+    def dataset_to_gt_mask(self, mask: torch.Tensor):
         raise NotImplementedError()
     
-    def to_gt_mask(self, mask: torch.Tensor):
+    def gt_to_dataset_mask(self, mask: torch.Tensor):
         raise NotImplementedError()
     
-    def get_num_classes_fg(self):
-        return self.foreground_classes
+    def gt_to_train_mask(self, mask: torch.Tensor):
+        raise NotImplementedError()
+    
+    def get_logits(self, mask: torch.Tensor):
+        raise NotImplementedError()
+    
+    def get_segmentation(self, mask: torch.Tensor):
+        raise NotImplementedError()
+    
+    def get_num_train_channels(self):
+        raise NotImplementedError()
+    
+    def gt_mapping_for_visualization(self):
+        raise NotImplementedError()
+    
+    def get_num_classes(self):
+        return self.num_classes
     
 
-class IdentityMaskMapping(BaseMaskMapping):
+class MultiClassSegMaskMapping(BaseMaskMapping):
+    train_switch: bool
+    prediction_type: str
+    num_classes: int
 
-    def preprocess_gt_mask(self, mask: torch.Tensor):
-        return mask
-    
-    def to_train_mask(self, mask: torch.Tensor):
-        return mask
-    
-    def to_gt_mask(self, mask: torch.Tensor):
-        return mask
-    
-    def create_gt_mask_from_pred(self, mask: torch.Tensor):
-        return mask
-    
 
+    def __init__(self, dataset_mapping: dict, switch: bool=False, prediction_type: str="sample") -> None:
+        if prediction_type == "sample" and switch:
+            logger.warning("Switch is set to True but prediction_type is set to sample. Switch will be ignored.")
+            self.train_switch = False
+        else:
+            self.train_switch = switch
+        
+        self.gt_mapping = {}
+        if dataset_mapping["background"] is not None and isinstance(dataset_mapping["background"], int):
+            self.gt_mapping["background"] = 0 # background class is always 0 --> ensures that the metrics work as expected
+        else:
+            raise ValueError(f"Background class is not defined in dataset_mapping: {dataset_mapping}.")
+        
+        index = 1
+        items = sorted(dataset_mapping.items(), key=lambda item: item[1])
+        for keys, value in items:
+            if keys != "background":
+                if not isinstance(value, int):
+                    raise TypeError(f"Value of Key {keys} has type {type(value)} but should have been {int}")
+                else: 
+                    self.gt_mapping[keys] = index
+                    index += 1
+
+        self.dataset_mapping = dataset_mapping
+        self.num_classes = len(dataset_mapping.keys())
+
+    
+    def dataset_to_gt_mask(self, mask: torch.Tensor):
+        gt_mask = mask.clone()
+        for class_name in self.dataset_mapping.keys():
+            gt_mask = torch.where(mask == self.dataset_mapping[class_name], self.gt_mapping[class_name], gt_mask)
+        return gt_mask.type(mask.type())
+    
+    def gt_to_dataset_mask(self, mask: torch.Tensor):
+        dataset_mask = mask.clone()
+        for class_name in self.gt_mapping.keys():
+            dataset_mask = torch.where(mask == self.gt_mapping[class_name], self.dataset_mapping[class_name], dataset_mask)
+        return dataset_mask.type(mask.type())
+    
+    def gt_to_train_mask(self, mask: torch.Tensor):
+        fg_value = 1 if self.train_switch else 0
+        train_mask = torch.empty(mask.shape[0], self.get_num_train_channels(), mask.shape[2], mask.shape[3])
+
+        for class_name, values in self.gt_mapping.items():
+            train_mask[:, values, :, :] = torch.where(mask == values, fg_value, 1-fg_value).squeeze(1)
+
+        return train_mask.type(mask.type())
+    
+    def get_logits(self, mask: torch.Tensor):
+        # Mask is of shape (N, num_classes, H, W)
+        # Output is of shape (N, num_classes, H, W)
+        return mask if self.train_switch else (-1) * mask
+        
+
+    def get_segmentation(self, logits: torch.Tensor):
+        # Logits are of shape (N, num_classes, H, W)
+        # Output is of shape ((N, 1, H, W), (N, C, H, W))
+        assert(logits.shape[1] == self.num_classes)
+        segmentation = torch.argmax(logits, dim=1, keepdim=True)
+
+        return segmentation, torch.zeros_like(logits, device=logits.device).scatter_(1, segmentation, 1)
+    
+    def gt_mapping_for_visualization(self):
+        offset = self.num_classes + 1
+        class_labels = {}
+        class_labels_pred = {}
+
+        for class_name, value in self.gt_mapping.items():
+            class_labels[value] = class_name
+            class_labels_pred[value + offset] = class_name
+        
+        return {
+            "class_labels": class_labels,
+            "class_labels_pred": class_labels_pred,
+            "offset": offset
+        }
+
+    def get_num_train_channels(self):
+        return self.num_classes
+    
 
 class BinarySegMaskMapping(BaseMaskMapping):
-    schema = {
-        "foreground": int,
-        "background": int
-    }
-    
-    
-    def __init__(self, gt_setting: dict, train_setting: dict) -> None:
-        self.gt = self.check_input(gt_setting)
-        self.train = self.check_input(train_setting)
-
-        self.set_threshold_func((self.train["foreground"] + self.train["background"]) / 2)
+    train_mapping: dict
+    threshold_func: callable
 
     
-    def set_threshold_func(self, threshold: int, inverse: bool=False):
-        if not inverse:
-            if self.train["foreground"] > self.train["background"]:
-                self.threshold_func = lambda tensor: torch.where(tensor > threshold, self.train["foreground"], self.train["background"])
-            else:
-                self.threshold_func = lambda tensor: torch.where(tensor > threshold, self.train["background"], self.train["foreground"])
+    def __init__(self, dataset_mapping: dict, train_mapping: dict) -> None:
+        self.num_classes = 2
+        self.gt_mapping = {"background": 0, "foreground": 1}
+        self.dataset_mapping = self.check_input(dataset_mapping)
+        self.train_mapping = self.check_input(train_mapping)
+
+        self.set_threshold_func((self.train_mapping["foreground"] + self.train_mapping["background"]) / 2)
+
+    
+    def check_input(self, dictionary):
+        if dictionary is not None:
+            if dictionary["background"] is None or not isinstance(dictionary["background"], int):
+                raise ValueError(f"Background class is not defined in dataset_mapping: {dictionary}.")
+            if dictionary["foreground"] is None or not isinstance(dictionary["foreground"], int):
+                raise ValueError(f"Foreground class is not defined in dataset_mapping: {dictionary}.")
         else:
-            if self.train["foreground"] > self.train["background"]:
-                self.threshold_func = lambda tensor: torch.where(tensor > threshold, self.train["background"], self.train["foreground"])
-            else:
-                self.threshold_func = lambda tensor: torch.where(tensor > threshold, self.train["foreground"], self.train["background"])
+            raise ValueError(f"dataset_mapping is not defined.")
+        return dictionary
 
+    
+    def set_threshold_func(self, threshold: int):
+        if self.train_mapping["foreground"] > self.train_mapping["background"]:
+            self.threshold_func = lambda tensor: torch.where(tensor > threshold, self.train_mapping["foreground"], self.train_mapping["background"])
+        else:
+            self.threshold_func = lambda tensor: torch.where(tensor > threshold, self.train_mapping["background"], self.train_mapping["foreground"])
+        
+    
+    def dataset_to_gt_mask(self, mask: torch.Tensor):
+        gt_mask = torch.where(mask == self.dataset_mapping["background"], self.gt_mapping["background"], self.gt_mapping["foreground"])
+        return gt_mask.type(mask.type())
+    
+    def gt_to_dataset_mask(self, mask: torch.Tensor):
+        dataset_mask = torch.where(mask == self.gt_mapping["background"], self.dataset_mapping["background"], self.dataset_mapping["foreground"])
+        return dataset_mask.type(mask.type())
+    
+    def gt_to_train_mask(self, mask: torch.Tensor):
+        train_mask = torch.where(mask == self.gt_mapping["background"], self.train_mapping["background"], self.train_mapping["foreground"])
+        return train_mask.type(mask.type())
+    
+    def get_logits(self, mask: torch.Tensor):
+        # Mask is of shape (N, 1, H, W)
+        # Output is of shape (N, 1, H, W)
+        return mask
+    
+    def get_segmentation(self, logits: torch.Tensor):
+        # Logits are of shape (N, 1, H, W)
+        # Output is of shape ((N, 1, H, W), (N, 2, H, W))
+        segmentation = self.threshold_func(logits)
+        one_hot_shape = (logits.shape[0], 2, logits.shape[2], logits.shape[3])
 
-    # Ensures that the gt mask is binary
-    def preprocess_gt_mask(self, mask: torch.Tensor):
-        type_mask = mask.type()
-        mask = torch.where(mask == self.gt["background"], self.gt["background"], self.gt["foreground"])
-        return mask.type(type_mask)
-    
-
-    def to_train_mask(self, mask: torch.Tensor):
-        type_mask = mask.type()
-        mask = torch.where(mask == self.gt["background"], self.train["background"], self.train["foreground"])
-        return mask.type(type_mask)
-    
-    def to_gt_mask(self, mask: torch.Tensor):
-        type_mask = mask.type()
-        mask = torch.where(mask == self.train["background"], self.gt["background"], self.gt["foreground"])
-        return mask.type(type_mask)
-    
-    
-    def create_gt_mask_from_pred(self, mask: torch.Tensor):
-        train_mask = self.threshold_func(mask)
-        return self.to_gt_mask(train_mask)
+        return segmentation, torch.zeros(one_hot_shape, device=logits.device).scatter_(1, segmentation, 1)
+        
     
     def gt_mapping_for_visualization(self):
         class_labels = {
-            self.gt["background"]: "background",
-            self.gt["foreground"]: "foreground"
+            self.gt_mapping["background"]: "background",
+            self.gt_mapping["foreground"]: "foreground"
         }
 
-        offset = self.gt["background"] + self.gt["foreground"] + 1
+        offset = self.gt_mapping["background"] + self.gt_mapping["foreground"] + 1
 
         class_labels_pred = {
-            (self.gt["background"] + offset): "background",
-            (self.gt["foreground"] + offset): "foreground"
+            (self.gt_mapping["background"] + offset): "background",
+            (self.gt_mapping["foreground"] + offset): "foreground"
         }
 
         return {
@@ -111,12 +199,15 @@ class BinarySegMaskMapping(BaseMaskMapping):
             "class_labels_pred": class_labels_pred,
             "offset": offset
         }
+    
+    def get_num_train_channels(self):
+        return 1
 
 
-def generate_mask_mapping(mask_type: str, gt_setting: dict, train_setting: dict) -> BaseMaskMapping:
-    if mask_type == "binary":
-        return BinarySegMaskMapping(gt_setting, train_setting)
-    elif mask_type == "identity":
-        return IdentityMaskMapping()
+def generate_mask_mapping(config: MaskTransformerConfig) -> BaseMaskMapping:
+    if config.mask_type == "binary":
+        return BinarySegMaskMapping(config.dataset_mapping, config.train_mapping)
+    elif config.mask_type == "multi_class":
+        return MultiClassSegMaskMapping(config.dataset_mapping, config.train_switch, config.prediction_type)
     else:
-        raise ValueError(f"Maks type {mask_type} has not been implemented.")
+        raise ValueError(f"Maks type {config.mask_type} has not been implemented.")

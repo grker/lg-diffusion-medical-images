@@ -1,0 +1,9 @@
+mask_type: binary
+dataset_mapping: 
+  background: 0
+  foreground: 1
+train_mapping:
+  background: 0
+  foreground: 1
+prediction_type: ${diffusion.prediction_type}
+train_switch: False

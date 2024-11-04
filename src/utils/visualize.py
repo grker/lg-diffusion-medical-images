@@ -76,8 +76,6 @@ def load_res_to_wandb(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: tor
     pred_mask = torch_to_2d_numpy(pred_mask)
     dens, edges = np.histogram(pred_mask)
 
-    class_labels = {}
-
     if gt_mask is not None: 
         return wandb.Image(
             image,
@@ -151,25 +149,25 @@ def create_wandb_mask_visualization(image: torch.Tensor, gt_mask: torch.Tensor, 
         )
     
 def normalize(tensor: torch.Tensor):
-    assert(len(tensor.shape) == 3)
+    # ensures that the tensor is in the range [0, 1]
     return (tensor - torch.min(tensor)) / (torch.max(tensor) - torch.min(tensor))
     
-def visualize_segmentation(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: torch.Tensor, before_threshold: torch.Tensor, phase: str, mapping: dict, batch_idx: int, img_index_list: list[int]=None):
+def visualize_segmentation(image: torch.Tensor, gt_mask: torch.Tensor, pred_mask: torch.Tensor, before_threshold: torch.Tensor, phase: str, mapping: dict, batch_idx: int, num_classes: int, img_index_list: list[int]=None):
     if img_index_list is None:
         img_index_list = [random.randint(0, image.shape[0]-1)]
 
-    
     for img_index in img_index_list:
         caption = f"BatchIdx_{batch_idx}_ImageIdx_{img_index}"
         mask_vis = create_wandb_mask_visualization(image[img_index], gt_mask[img_index], pred_mask[img_index], mapping, caption)
-        pred_mask_wandb = create_wandb_image(pred_mask[img_index], caption)
-        gt_mask_wandb = create_wandb_image(gt_mask[img_index], caption)
-        before_threshold = create_wandb_image(normalize(before_threshold[img_index]), caption)
-        
+        pred_mask_wandb = create_wandb_image(normalize(pred_mask[img_index]), caption)
+        gt_mask_wandb = create_wandb_image(normalize(gt_mask[img_index]), caption)
+        if num_classes == 2:
+            before_threshold = create_wandb_image(normalize(before_threshold[img_index]), caption)
+            wandb.log({f"{phase}_before_threshold": before_threshold})
+
         wandb.log({f"{phase}_mask_comparison": mask_vis})
         wandb.log({f"{phase}_pred_mask": pred_mask_wandb})
         wandb.log({f"{phase}_gt_mask": gt_mask_wandb})
-        wandb.log({f"{phase}_before_threshold": before_threshold})
 
 
 

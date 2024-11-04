@@ -1,5 +1,5 @@
 defaults:
-  - dataset: m2nist
+  - dataset: acdc
   - dataloader: base_dataloader
   - model: unet_dmisse
   - diffusion: base_diffusion

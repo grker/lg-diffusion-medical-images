@@ -18,6 +18,7 @@ class ACDCDataset(Dataset):
 
     data: torch.Tensor
     gt: torch.Tensor
+    gt_train: torch.Tensor
     patient_metadata: list[dict]
 
     training_samples: int
@@ -33,10 +34,8 @@ class ACDCDataset(Dataset):
         self.image_size = config.image_size
         self.normalize = config.normalize
         self.mode = config.mode
-        self.multiclass = config.multiclass
         self.patient_metadata = []
-
-        self.mask_transformer = generate_mask_mapping(config.mapping_type, config.mapping_gt, config.mapping_train)
+        self.mask_transformer = generate_mask_mapping(config.mask_transformer)
 
         self.load_data()
 
@@ -53,11 +52,11 @@ class ACDCDataset(Dataset):
 
         self.data = torch.cat((training_data, testing_data), dim=0).unsqueeze(1).type(dtype=torch.float32)
         
-        self.gt = self.mask_transformer.preprocess_gt_mask(torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)).type(dtype=torch.float32)
-        self.gt_train = self.mask_transformer.to_train_mask(self.gt)
+        self.gt = self.mask_transformer.dataset_to_gt_mask(torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)).type(dtype=torch.float32)
+        self.gt_train = self.mask_transformer.gt_to_train_mask(self.gt)
         
-
-        print(f"histogram of gt train: {torch.histc(self.gt_train, bins=10, min=-1, max=1)}")
+        print(f"gt train shape: {self.gt_train.shape}")
+        print(f"histogram of gt train: {torch.histc(self.gt_train, bins=10)}")
 
 
     def load_patients(self, folder_path):
@@ -69,15 +68,6 @@ class ACDCDataset(Dataset):
                 patient_path = os.path.join(folder_path, patient)
                 data_patient, gt_patient = self.load_patient(patient_path)
                 data_patient, gt_patient, max_value = self.normalize_and_augment_patient_data(data_patient, gt_patient)
-
-                # self.idx_to_patient.append(index)
-                # self.patient_metadata.append({
-                #     'patient': patient,
-                #     'startIdx': index,
-                #     'frames': data_patient.shape[0],
-                #     'max': max_value,
-                # })
-                # index += data_patient.shape[0]
 
                 data = torch.cat((data, data_patient), dim=0)
                 gt = torch.cat((gt, gt_patient), dim=0)

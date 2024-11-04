@@ -32,6 +32,7 @@ class DDPM(pl.LightningModule):
     optimizer_config: OptimizerConfig
     metrics: dict
     mask_transformer: BaseMaskMapping
+    num_classes: int # always includes the background
     
     def __init__(self, model: nn.Module, diffusion_config: DiffusionConfig, optimizer_config: OptimizerConfig, metrics: dict, mask_transformer: BaseMaskMapping, loss: torch.nn.Module):
         super().__init__()
@@ -50,7 +51,10 @@ class DDPM(pl.LightningModule):
         self.threshold = diffusion_config.threshold
         self.prediction_type = diffusion_config.prediction_type
         self.mask_transformer = mask_transformer
-        self.mask_transformer.set_threshold_func(self.threshold)
+        self.num_classes = mask_transformer.get_num_classes()
+
+        if hasattr(self.mask_transformer, "set_threshold_func"):
+            getattr(self.mask_transformer, "set_threshold_func")(self.threshold)
 
         self.loss_fn = loss
 
@@ -132,7 +136,7 @@ class DDPM(pl.LightningModule):
 
         with torch.no_grad():
             for reps in range(self.repetitions):
-                noisy_mask = torch.rand_like(images, device=images.device)
+                noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
 
                 for t in tqdm(self.scheduler.timesteps):
                     model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device))
@@ -143,13 +147,19 @@ class DDPM(pl.LightningModule):
         self.model.train()
         ensemble_mask = ensemble_mask/self.repetitions
 
-        pred_masks = self.mask_transformer.create_gt_mask_from_pred(ensemble_mask)
-        
-        print(f"histogram of pred_mask: {torch.histc(pred_masks[0], bins=10, min=0, max=1)}")
-        print(f"histogram of gt_mask: {torch.histc(gt_masks[0], bins=10, min=0, max=1)}")
+        logits = self.mask_transformer.get_logits(ensemble_mask)
+        seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
 
-        compute_and_log_metrics(self.metrics, pred_masks, gt_masks, phase, self.log)        
-        visualize_segmentation(images, gt_masks, pred_masks, ensemble_mask, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx)
+        print(f"shape of seg_mask: {seg_mask.shape}")
+        print(f"shape of one_hot_seg_mask: {one_hot_seg_mask.shape}")
+        print(f"shape of gt_masks: {gt_masks.shape}")
+        
+        
+        print(f"histogram of seg_mask: {torch.histc(seg_mask[0], bins=10)}")
+        print(f"histogram of gt_mask: {torch.histc(gt_masks[0], bins=10)}")
+
+        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)        
+        visualize_segmentation(images, gt_masks, seg_mask, ensemble_mask, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes)
         
         return 0
     

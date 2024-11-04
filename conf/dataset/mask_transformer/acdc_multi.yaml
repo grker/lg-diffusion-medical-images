@@ -1,0 +1,8 @@
+mask_type: multi_class
+dataset_mapping:
+  background: 0
+  fg_class_1: 1
+  fg_class_2: 2
+  fg_class_3: 3
+train_switch: False
+prediction_type: ${diffusion.prediction_type}

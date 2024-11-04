@@ -15,6 +15,14 @@ class ResNetConfig(ModelConfig):
 #     starting_channels: int
 #     time_dim: int
 
+class MaskTransformerConfig(ModelConfig):
+    mask_type: str
+    dataset_mapping: dict
+    train_mapping: dict
+    prediction_type: str
+    train_switch: bool
+
+
 class DiffusionConfig:
     noise_steps: int
     beta_start: float
@@ -40,10 +48,7 @@ class DatasetConfig:
     image_size: tuple[int,int]
     normalize: bool
     mode: str
-    multiclass: bool
-    mapping_type: str
-    mapping_gt: dict
-    mapping_train: dict
+    mask_transformer: MaskTransformerConfig
 
 
 class DataloaderConfig:
