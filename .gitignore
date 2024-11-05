@@ -1,0 +1,16 @@
+# Folders to ignore
+data/
+wandb/
+results/
+lightning_logs/
+jobs/
+hydra_output/
+
+# Ignore all __pycache__ directories
+__pycache__/
+
+# Ignore all .pyc files
+*.pyc
+
+# Ignore all .pyo files (compiled Python files for optimized mode)
+*.pyo
