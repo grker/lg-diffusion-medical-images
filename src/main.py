@@ -4,6 +4,7 @@ import logging
 import wandb
 import pytorch_lightning as pl
 import torch
+import sys
 
 from omegaconf import OmegaConf, open_dict
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -16,7 +17,7 @@ from models.base_segmentation import create_segmentor
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="train_test",
+    config_name="unet_seg",
 )
 def main(config: SegmentationConfig):
     # setup
@@ -54,7 +55,7 @@ def main(config: SegmentationConfig):
             max_epochs=config.trainer.max_epochs,
             enable_progress_bar=True,
             callbacks=[],
-            check_val_every_n_epoch=30,
+            check_val_every_n_epoch=2,
             log_every_n_steps=1,
             enable_checkpointing=True,
             benchmark=True,

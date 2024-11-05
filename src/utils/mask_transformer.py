@@ -128,13 +128,14 @@ class BinarySegMaskMapping(BaseMaskMapping):
     threshold_func: callable
 
     
-    def __init__(self, dataset_mapping: dict, train_mapping: dict) -> None:
+    def __init__(self, dataset_mapping: dict, train_mapping: dict, threshold: float=None) -> None:
         self.num_classes = 2
         self.gt_mapping = {"background": 0, "foreground": 1}
         self.dataset_mapping = self.check_input(dataset_mapping)
         self.train_mapping = self.check_input(train_mapping)
 
-        self.set_threshold_func((self.train_mapping["foreground"] + self.train_mapping["background"]) / 2)
+        threshold = (self.train_mapping["foreground"] + self.train_mapping["background"]) / 2 if threshold is None else threshold
+        self.set_threshold_func(threshold)
 
     
     def check_input(self, dictionary):
@@ -206,7 +207,7 @@ class BinarySegMaskMapping(BaseMaskMapping):
 
 def generate_mask_mapping(config: MaskTransformerConfig) -> BaseMaskMapping:
     if config.mask_type == "binary":
-        return BinarySegMaskMapping(config.dataset_mapping, config.train_mapping)
+        return BinarySegMaskMapping(config.dataset_mapping, config.train_mapping, config.threshold)
     elif config.mask_type == "multi_class":
         return MultiClassSegMaskMapping(config.dataset_mapping, config.train_switch, config.prediction_type)
     else:

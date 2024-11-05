@@ -7,3 +7,4 @@ train_mapping:
   foreground: 1
 prediction_type: ${diffusion.prediction_type}
 train_switch: False
+threshold: 0.5

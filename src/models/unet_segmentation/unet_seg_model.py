@@ -1,88 +1,97 @@
 
 import pytorch_lightning as pl
-import random
 import torch
 import torch.nn as nn
-import wandb
 
-from monai.losses import DiceLoss, DiceCELoss
 from models.base_segmentation import BaseSegmentation
 from utils.hydra_config import SegmentationConfig, UNetConfig
-# from utils.metrics import dice_loss
-from utils.visualize import visualize_sampling_res, load_res_to_wandb
-from monai.losses import DiceLoss
+from utils.visualize import visualize_segmentation
 from utils.metrics import compute_and_log_metrics
+from utils.helper import unpack_batch
+from omegaconf import open_dict
+from utils.mask_transformer import BaseMaskMapping
+
+
 
 class UnetSegmentation(BaseSegmentation):
     def __init__(self, config: SegmentationConfig):
         super().__init__(config)
 
-    def create_segmentation_model(self):
+    def create_segmentation_model(self, mask_transformer: BaseMaskMapping, num_classes: int) -> pl.LightningModule:
         model = self.create_model()
-        metrics = self.create_metrics_fn()
-        return UnetSegmentationModel(model, metrics)
+        metrics = self.create_metrics_fn(num_classes)
+        loss = self.create_loss()
+        return UnetSegmentationModel(model, metrics, mask_transformer, loss)
  
     def create_model(self):
         from monai.networks.nets import BasicUNet
         
-        return BasicUNet(spatial_dims=2, features=[32, 64, 128, 256, 512, 32], dropout=0.2, in_channels=1, out_channels=1)
+        return BasicUNet(**self.config.model)
     
     def initialize(self):
         dataset, dataloader = self.create_dataset_dataloader()
         train_loader, val_loader, test_loader = dataloader
+
+        if hasattr(dataset, 'mask_transformer'):
+            mask_transformer = getattr(dataset, 'mask_transformer')
+            output_channels = mask_transformer.get_num_train_channels()
+            num_classes = mask_transformer.get_num_classes()
+        else:
+            raise AttributeError("No Mask Transformer is specified!")
         
-        return self.create_segmentation_model(), train_loader, val_loader, test_loader
+        with open_dict(self.config.model):
+            self.config.model.out_channels = output_channels
+        
+        return self.create_segmentation_model(mask_transformer, num_classes), train_loader, val_loader, test_loader
 
 
 
 class UnetSegmentationModel(pl.LightningModule):
-    def __init__(self, model: nn.Module, metrics: dict):
+    model: nn.Module
+    metrics: dict
+    loss_fn: torch.nn.Module
+    mask_transformer: BaseMaskMapping
+    num_classes: int
+
+    def __init__(self, model: nn.Module, metrics: dict, mask_transformer: BaseMaskMapping, loss_fn: torch.nn.Module):
         super(UnetSegmentationModel, self).__init__()
         self.model = model
         self.metrics = metrics
-        self.loss_fn = DiceLoss(include_background=False, sigmoid=True)
-        
+        self.loss_fn = loss_fn
+        self.mask_transformer = mask_transformer
+        self.num_classes = mask_transformer.get_num_classes()
 
     def forward(self, x):
         return self.model(x)
 
-    def training_step(self, batch):
-        images, masks = batch
+    def training_step(self, batch, batch_idx):
+        images, masks, training_mask = unpack_batch(batch)
         pred_masks = self.model(images)
 
-        loss = self.loss_fn(pred_masks, masks)
+        print(f"pred_masks: {pred_masks.shape}")
+        print(f"masks: {masks.shape}")
+
+        loss = self.loss_fn(pred_masks, training_mask)
         self.log('train_loss', loss)
         return loss
+    
+    def val_test_step(self, batch, batch_idx, phase):
+        images, gt_masks, _ = unpack_batch(batch)
+        pred_masks = self.model(images)
+
+        logits = self.mask_transformer.get_logits(pred_masks)
+        seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
+
+        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+        visualize_segmentation(images, gt_masks, seg_mask, pred_masks, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes)
+
+        return 0
 
     def validation_step(self, batch, batch_idx):
-        images, gt_masks = batch
-        pred_masks = self.model(images)
-        pred_masks = pred_masks > 0.5
-
-        loss = self.loss_fn(pred_masks, gt_masks)
-        self.log('val_loss', loss)
-
-        index = random.randint(0, pred_masks.shape[0] - 1)
-        val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
-        wandb.log({"val_examples": val_images})
-
-        compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
-        return loss
+        return self.val_test_step(batch, batch_idx, "val")
 
     def test_step(self, batch, batch_idx):
-        images, gt_masks = batch
-        pred_masks = self.model(images)
-        pred_masks = pred_masks > 0.5
-
-        loss = self.loss_fn(pred_masks, gt_masks)
-        self.log('test_loss', loss)
-
-        index = random.randint(0, pred_masks.shape[0] - 1)
-        # val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
-        # wandb.log({"test_examples": val_images})
-
-        compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "test", self.log)
-        return loss
+        return self.val_test_step(batch, batch_idx, "test")
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.model.parameters(), lr=0.001)

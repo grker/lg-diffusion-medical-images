@@ -1,0 +1,15 @@
+name: acdc
+data_path: ../data/ACDC/database
+image_size: [200, 200]
+normalize: True
+mode: bilinear
+multiclass: True
+mapping_type: "multi_class_multi_channel"
+mapping_gt:
+  background: 0
+  fg_class_1: 1
+  fg_class_2: 2
+  fg_class_3: 3
+mapping_train:
+  null
+

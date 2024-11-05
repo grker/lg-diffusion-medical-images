@@ -21,6 +21,7 @@ class MaskTransformerConfig(ModelConfig):
     train_mapping: dict
     prediction_type: str
     train_switch: bool
+    threshold: float
 
 
 class DiffusionConfig:
@@ -83,6 +84,13 @@ class UNetConfig(ModelConfig):
     use_scale_shift_norm: bool
     resblock_updown: bool
     use_new_attention_order: bool
+
+class BasicUNetConfig(ModelConfig):
+    spatial_dims: int
+    in_channels: int
+    out_channels: int
+    features: list[int]
+    dropout: float
 
 class Loss:
     scale: float

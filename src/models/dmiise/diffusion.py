@@ -12,10 +12,10 @@ from diffusers.schedulers import DDPMScheduler
 from diffusers.optimization import get_cosine_schedule_with_warmup
 
 from utils.hydra_config import DiffusionConfig, OptimizerConfig
-from utils.visualize import visualize_sampling_res, load_res_to_wandb, create_wandb_image, visualize_segmentation
-from monai.losses import DiceLoss, DiceCELoss
+from utils.visualize import visualize_segmentation
 from utils.metrics import compute_and_log_metrics
 from utils.mask_transformer import BaseMaskMapping
+from utils.helper import unpack_batch
 
 
 def scheduler_factory(scheduler_type: str, beta_start: float, beta_end: float, noise_steps: int):
@@ -53,8 +53,8 @@ class DDPM(pl.LightningModule):
         self.mask_transformer = mask_transformer
         self.num_classes = mask_transformer.get_num_classes()
 
-        if hasattr(self.mask_transformer, "set_threshold_func"):
-            getattr(self.mask_transformer, "set_threshold_func")(self.threshold)
+        # if hasattr(self.mask_transformer, "set_threshold_func"):
+        #     getattr(self.mask_transformer, "set_threshold_func")(self.threshold)
 
         self.loss_fn = loss
 
@@ -99,7 +99,7 @@ class DDPM(pl.LightningModule):
     
         
     def training_step(self, batch, batch_idx):
-        images, gt_masks, gt_train_masks = self.unpack_batch(batch)
+        images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
 
         noise = torch.randn_like(gt_train_masks, device=gt_train_masks.device)
@@ -128,7 +128,7 @@ class DDPM(pl.LightningModule):
     
 
     def val_test_step(self, batch, batch_idx, phase):
-        images, gt_masks, gt_train_masks = self.unpack_batch(batch)
+        images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
         ensemble_mask = torch.zeros_like(images, device=images.device)
 
