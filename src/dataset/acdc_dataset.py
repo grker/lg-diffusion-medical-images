@@ -75,7 +75,6 @@ class ACDCDataset(Dataset):
         return data, gt
     
     def normalize_and_augment_patient_data(self, patient_data: torch.Tensor, patient_gt):
-        from sklearn.preprocessing import MinMaxScaler
         max_value = torch.max(patient_data)
     
         return patient_data / max_value, patient_gt, max_value
@@ -149,8 +148,6 @@ class ACDCDataset(Dataset):
     def get_image_width(self):
         return self.data.shape[3]
     
-    def get_switch(self):
-        return self.switch
 
 
     

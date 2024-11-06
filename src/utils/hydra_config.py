@@ -15,6 +15,13 @@ class ResNetConfig(ModelConfig):
 #     starting_channels: int
 #     time_dim: int
 
+class TransformConfig:
+    apply_to_mask: bool
+    args: dict
+
+class PreprocessorConfig:
+    transform_config: dict[str, TransformConfig]
+
 class MaskTransformerConfig(ModelConfig):
     mask_type: str
     dataset_mapping: dict
