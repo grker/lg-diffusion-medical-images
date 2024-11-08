@@ -12,7 +12,7 @@ from diffusers.schedulers import DDPMScheduler
 from diffusers.optimization import get_cosine_schedule_with_warmup
 
 from utils.hydra_config import DiffusionConfig, OptimizerConfig
-from utils.visualize import visualize_segmentation
+from utils.visualize import visualize_segmentation, create_wandb_image, visualize_mean_variance
 from utils.metrics import compute_and_log_metrics
 from utils.mask_transformer import BaseMaskMapping
 from utils.helper import unpack_batch
@@ -134,6 +134,9 @@ class DDPM(pl.LightningModule):
 
         self.model.eval()
 
+        ensemble_shape = (self.repetitions, *gt_train_masks.shape)
+        print(f"ensemble shape: {ensemble_shape}")
+        ensemble_mask = torch.zeros(ensemble_shape, device=images.device)
         with torch.no_grad():
             for reps in range(self.repetitions):
                 noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
@@ -142,10 +145,10 @@ class DDPM(pl.LightningModule):
                     model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device))
                     noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
 
-                ensemble_mask = torch.add(ensemble_mask, noisy_mask)
+                ensemble_mask[reps] = noisy_mask
 
         self.model.train()
-        ensemble_mask = ensemble_mask/self.repetitions
+        # ensemble_mask = ensemble_mask/self.repetitions
 
         logits = self.mask_transformer.get_logits(ensemble_mask)
         seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
@@ -158,184 +161,60 @@ class DDPM(pl.LightningModule):
         print(f"histogram of seg_mask: {torch.histc(seg_mask[0], bins=10)}")
         print(f"histogram of gt_mask: {torch.histc(gt_masks[0], bins=10)}")
 
-        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)        
-        visualize_segmentation(images, gt_masks, seg_mask, ensemble_mask, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes)
-        
+        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+        index = random.randint(0, num_samples-1)        
+        visualize_segmentation(images, gt_masks, seg_mask, ensemble_mask, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index])
+        if self.repetitions > 1:
+            # need multiple samples per sample in order to compute the std
+            visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
+
         return 0
     
 
+    def test_variance(self, image: torch.Tensor, gt_mask: torch.Tensor, gt_train_mask: torch.Tensor, reps: int, batch_idx: int):
+        if len(image.shape) == 3:
+            image = image.unsqueeze(0)
+        if len(gt_mask.shape) == 3:
+            gt_mask = gt_mask.unsqueeze(0)
+        if len(gt_train_mask.shape) == 3:
+            gt_train_mask = gt_train_mask.unsqueeze(0)
 
-    # def validation_step(self, batch, batch_idx):
-    #     images, gt_masks, gt_masks_train = batch
+        num_samples = image.shape[0]
+        ensemble_shape = (reps, *gt_train_mask.shape)
+        ensemble_mask = torch.zeros(ensemble_shape, device=image.device)
+
+        for r in range(reps):
+            noisy_mask = torch.rand_like(gt_train_mask, device=image.device)
+
+            for t in tqdm(self.scheduler.timesteps):
+                model_output = self.model(torch.cat((noisy_mask, image), dim=1), torch.full((num_samples,), t, device=image.device))
+                noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
+
+            ensemble_mask[r] = noisy_mask
+
         
-    #     num_images = images.shape[0]
-    #     noisy_mask = torch.rand_like(images, device=images.device)
+        mean_mask = torch.mean(ensemble_mask, dim=0)
+        std_mask = torch.std(ensemble_mask, dim=0)
 
-    #     index = random.randint(0, num_images-1)
+        min_per_sample_mean = torch.min(torch.flatten(mean_mask, start_dim=1), dim=1).values
+        max_per_sample_mean = torch.max(torch.flatten(mean_mask, start_dim=1), dim=1).values
 
-    #     self.model.eval()
-    #     ensemble_mask = torch.zeros_like(images, device=images.device)
-    #     with torch.no_grad():
-    #         for reps in range(self.repetitions):
-    #             noisy_mask = torch.rand_like(images, device=images.device)
-
-    #             for t in tqdm(self.scheduler.timesteps):
-    #                 model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_images,), t, device=images.device))
-
-    #                 noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
-
-    #                 # if t < 200 and t % 20 == 0:
-    #                 #     mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
-    #                 #     wandb.log({"step_images": mask_step})
-
-    #             print(f"max bevor clamping: {torch.max(noisy_mask)}")
-    #             print(f"min bevor clamping: {torch.min(noisy_mask)}")
-    #             ensemble_mask = torch.add(ensemble_mask, noisy_mask)
-    #     self.model.train()
-
-    #     ensemble_mask = ensemble_mask/self.repetitions
+        min_per_sample_std = torch.min(torch.flatten(std_mask, start_dim=1), dim=1).values
+        max_per_sample_std = torch.max(torch.flatten(std_mask, start_dim=1), dim=1).values
         
-        
-    #     pred_masks = torch.where(ensemble_mask > self.threshold, 1.0, 0.0)
-    #     val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
+        print(f"shape of min_per_sample_mean: {min_per_sample_mean.shape}")
 
-    #     wandb.log({"val_examples": val_images})
-    #     mask_image = create_wandb_image(pred_masks[index])
-    #     gt_image = create_wandb_image(gt_masks[index])
+        mean_mask = (mean_mask - min_per_sample_mean) / (max_per_sample_mean - min_per_sample_mean)
+        std_mask = (std_mask - min_per_sample_std) / (max_per_sample_std - min_per_sample_std)
 
-    #     wandb.log({"pred_masks": mask_image})
-    #     wandb.log({"gt_masks": gt_image})
+        print(f"shape of mean_mask: {mean_mask.shape}")
+        print(f"shape of std_mask: {std_mask.shape}")
 
-    #     compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
+        for idx in range(num_samples):
+            wandb.log({"mean_mask": create_wandb_image(mean_mask[idx], caption=f"Testing VarianceBIdx_{batch_idx}_Idx_{idx}")})
+            wandb.log({"std_mask": create_wandb_image(std_mask[idx], caption=f"Testing VarianceBIdx_{batch_idx}_Idx_{idx}")})
 
-    #     # pred_masks = torch.where(noisy_mask.clamp(-1, 1) > 0.0, 1.0, 0.0)
-    #     # print(f"distribution of pred mask: {torch.histc(pred_masks[index], bins=10, min=0, max=1)}")
-    #     # print(f"how many ones: {(pred_masks[index] == 1.0).sum()}")
-    #     # val_images = load_res_to_wandb(images[index], gt_masks[index] < 0, pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
-    #     # wandb.log({"val_examples": val_images})
-        
-    #     print(f"max bevor clamping ens: {torch.max(ensemble_mask[index])}")
-    #     print(f"min bevor clamping ens: {torch.min(ensemble_mask[index])}")
-
-    #     # final_pic = ((ensemble_mask + 1) / 2).clamp(0,1)
-    #     final_pic = (ensemble_mask).clamp(0,1)
-
-
-    #     final_img = create_wandb_image(final_pic[index], caption=f"{batch_idx}_{index} at step {t}")
-    #     wandb.log({"final pic": final_img})
-
-    #     print(f"histogram of final pic: {torch.histc(final_pic[index], bins=10, min=0, max=1)}")
-    #     print(f"max after clamping: {torch.max(final_pic[index])}")
-    #     print(f"min after clamping: {torch.min(final_pic[index])}")
-
-    #     # compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
-
-    #     return 0
-
-    # def validation_step(self, batch, batch_idx):
-    #     images, gt_masks = batch
-        
-    #     num_images = images.shape[0]
-    #     noisy_mask = torch.rand_like(images, device=images.device)
-
-    #     index = random.randint(0, num_images-1)
-
-    #     self.model.eval()
-    #     ensemble_mask = torch.zeros_like(images, device=images.device)
-    #     with torch.no_grad():
-    #         for reps in range(self.repetitions):
-    #             noisy_mask = torch.rand_like(images, device=images.device)
-
-    #             for t in tqdm(self.scheduler.timesteps):
-    #                 model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_images,), t, device=images.device))
-
-    #                 noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
-
-    #                 # if t < 200 and t % 20 == 0:
-    #                 #     mask_step = load_res_to_wandb(images[index], pred_mask=noisy_mask[index] > 0.5, gt_mask=None, caption=f"{batch_idx}_{index} at step {t}")
-    #                 #     wandb.log({"step_images": mask_step})
-
-    #             print(f"max bevor clamping: {torch.max(noisy_mask[index])}")
-    #             print(f"min bevor clamping: {torch.min(noisy_mask[index])}")
-    #             ensemble_mask = torch.add(ensemble_mask, noisy_mask)
-    #     self.model.train()
-
-    #     ensemble_mask = ensemble_mask/self.repetitions
-        
-        
-    #     pred_masks = torch.where((ensemble_mask).clamp(0, 1) > self.threshold, 1.0, 0.0)
-    #     val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
-
-    #     wandb.log({"val_examples": val_images})
-    #     mask_image = create_wandb_image(pred_masks[index])
-    #     gt_image = create_wandb_image(gt_masks[index])
-
-    #     wandb.log({"pred_masks": mask_image})
-    #     wandb.log({"gt_masks": gt_image})
-
-    #     compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
-
-    #     # pred_masks = torch.where(noisy_mask.clamp(-1, 1) > 0.0, 1.0, 0.0)
-    #     # print(f"distribution of pred mask: {torch.histc(pred_masks[index], bins=10, min=0, max=1)}")
-    #     # print(f"how many ones: {(pred_masks[index] == 1.0).sum()}")
-    #     # val_images = load_res_to_wandb(images[index], gt_masks[index] < 0, pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
-    #     # wandb.log({"val_examples": val_images})
-        
-    #     print(f"max bevor clamping ens: {torch.max(ensemble_mask[index])}")
-    #     print(f"min bevor clamping ens: {torch.min(ensemble_mask[index])}")
-
-    #     final_pic = ensemble_mask.clamp(0, 1)
-    #     final_img = create_wandb_image(final_pic[index], caption=f"{batch_idx}_{index} at step {t}")
-    #     wandb.log({"final pic": final_img})
-
-    #     print(f"histogram of final pic: {torch.histc(final_pic[index], bins=10, min=0, max=1)}")
-    #     print(f"max after clamping: {torch.max(final_pic[index])}")
-    #     print(f"min after clamping: {torch.min(final_pic[index])}")
-
-    #     # compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "val", self.log)
-
-    #     return 0
-
-
-      ### Old Training Step Function
-    # def training_step(self, batch, batch_idx):
-    #     images, gt_masks, gt_masks_train = batch
-    #     num_images = gt_masks_train.shape[0]
-    #     noise = torch.randn_like(gt_masks_train, device=gt_masks.device)
-
-    #     timesteps = torch.randint(0, self.scheduler.config.num_train_timesteps, (num_images,), device=gt_masks.device, dtype=torch.int64)
-    #     noisy_image = self.scheduler.add_noise(gt_masks_train, noise, timesteps)
-
-    #     pred_noise = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
-
-    #     loss = self.loss_fn(pred_noise, noise)
-    #     self.log('train_loss', loss)
-
-    #     return loss
     
-
-    # def test_step(self, batch, batch_idx):
-    #     images, gt_masks, gt_masks_train = batch
-    #     num_images = images.shape[0]
-    #     noisy_mask = torch.rand_like(images, device=images.device)
-
-    #     index = random.randint(0, num_images-1)
-
-    #     self.model.eval()
-    #     with torch.no_grad():
-    #         for t in tqdm(self.scheduler.timesteps):
-    #             model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.ones(num_images, device=images.device) * t)
-
-    #             noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
-
-
-    #     self.model.train()
-
-    #     pred_masks = torch.where(noisy_mask > self.threshold, 1.0, 0.0)
-    #     val_images = load_res_to_wandb(images[index], gt_masks[index], pred_masks[index], caption=f"BIdx_{batch_idx}_Idx_{index}")
-
-    #     wandb.log({"test_examples": val_images})
-    #     compute_and_log_metrics(self.metrics, pred_masks, gt_masks, "test", self.log)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.optimizer_config.lr)
