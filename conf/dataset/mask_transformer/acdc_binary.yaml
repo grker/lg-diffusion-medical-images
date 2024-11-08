@@ -8,3 +8,5 @@ train_mapping:
 prediction_type: ${diffusion.prediction_type}
 train_switch: False
 threshold: 0.5
+ensemble_mode: mean
+multiclass: False

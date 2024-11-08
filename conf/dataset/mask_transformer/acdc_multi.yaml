@@ -6,3 +6,5 @@ dataset_mapping:
   fg_class_3: 3
 train_switch: False
 prediction_type: ${diffusion.prediction_type}
+ensemble_mode: majority
+multiclass: True

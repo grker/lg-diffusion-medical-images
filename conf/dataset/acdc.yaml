@@ -1,10 +1,10 @@
 defaults:
-  - mask_transformer: acdc_multi
+  - mask_transformer: acdc_binary
+  - _self_
 
 name: acdc
 data_path: ../data/ACDC/database
 image_size: [200, 200]
 normalize: True
 mode: bilinear
-multiclass: False
 

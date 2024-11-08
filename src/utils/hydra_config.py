@@ -29,6 +29,8 @@ class MaskTransformerConfig(ModelConfig):
     prediction_type: str
     train_switch: bool
     threshold: float
+    ensemble_mode: str
+    multiclass: bool
 
 
 class DiffusionConfig:

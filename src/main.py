@@ -5,6 +5,7 @@ import wandb
 import pytorch_lightning as pl
 import torch
 import sys
+import torchvision
 
 from omegaconf import OmegaConf, open_dict
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -17,7 +18,7 @@ from models.base_segmentation import create_segmentor
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="unet_seg",
+    config_name="train_test",
 )
 def main(config: SegmentationConfig):
     # setup
@@ -30,16 +31,26 @@ def main(config: SegmentationConfig):
     else:
         pl.seed_everything(config.seed)
 
+    base_path = os.path.dirname(os.getcwd())
+    wandb_path = os.path.join(base_path, "wandb")
     wandb.config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
     wandb.login(key=os.environ["WANDB_API_KEY"])
+
+    wandb_tags = [
+        config.project_name,
+        config.dataset.name,
+        "multiclass" if config.dataset.mask_transformer.multiclass else "binary"
+    ]
+    
     wandb.init(
-        project="difseg", config=wandb.config, tags=config.wandb_tags, job_type="train", dir=os.path.join(os.path.join(os.getcwd(), ".."), "wandb")
+        project="difseg", config=wandb.config, tags=wandb_tags, job_type="train", dir=wandb_path
     )
     wandb_logger = WandbLogger(log_model=True)
 
     logdir = os.path.join(
-        os.path.join(os.getcwd(), ".."), "lightning_logs", config.project_name, wandb.run.id
+        base_path, "lightning_logs", config.project_name, wandb.run.id
     )
+    print(f"logdir: {logdir}")
     os.makedirs(logdir, exist_ok=True)
     os.system(f"rm -r {logdir}/*")
 
@@ -50,12 +61,21 @@ def main(config: SegmentationConfig):
     seg_model, train_loader, val_loader, test_loader = segmentor.initialize()
     
     print(f"Initialization done.")
+
+    # images = torch.randn(8, 3, 200, 200)
+    # images = torchvision.utils.make_grid(images, nrow=4, padding=10)
+
+    # wandb.log({"pics": wandb.Image(
+    #     images,
+    #     caption="test"
+    # )})
+
     if config.train:
         trainer = pl.Trainer(
             max_epochs=config.trainer.max_epochs,
             enable_progress_bar=True,
             callbacks=[],
-            check_val_every_n_epoch=2,
+            check_val_every_n_epoch=20,
             log_every_n_steps=1,
             enable_checkpointing=True,
             benchmark=True,
