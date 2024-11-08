@@ -10,6 +10,7 @@ class BaseMaskMapping:
     dataset_mapping = dict=None
     gt_mapping = dict=None
     num_classes: int # always includes the background
+    ensemble_mode: str
 
     def dataset_to_gt_mask(self, mask: torch.Tensor):
         raise NotImplementedError()
@@ -42,7 +43,7 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
     num_classes: int
 
 
-    def __init__(self, dataset_mapping: dict, switch: bool=False, prediction_type: str="sample") -> None:
+    def __init__(self, dataset_mapping: dict, switch: bool=False, prediction_type: str="sample", ensemble_mode: str="mean") -> None:
         if prediction_type == "sample" and switch:
             logger.warning("Switch is set to True but prediction_type is set to sample. Switch will be ignored.")
             self.train_switch = False
@@ -50,6 +51,8 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
             self.train_switch = switch
         
         self.gt_mapping = {}
+        self.ensemble_mode = ensemble_mode
+
         if dataset_mapping["background"] is not None and isinstance(dataset_mapping["background"], int):
             self.gt_mapping["background"] = 0 # background class is always 0 --> ensures that the metrics work as expected
         else:
@@ -91,16 +94,28 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
         return train_mask.type(mask.type())
     
     def get_logits(self, mask: torch.Tensor):
-        # Mask is of shape (N, num_classes, H, W)
-        # Output is of shape (N, num_classes, H, W)
+        # Mask is of shape (reps, N, num_classes, H, W)
+        # Output is of shape (reps, N, num_classes, H, W)
         return mask if self.train_switch else (-1) * mask
         
 
     def get_segmentation(self, logits: torch.Tensor):
-        # Logits are of shape (N, num_classes, H, W)
+        # Logits are of shape (reps, N, num_classes, H, W)
         # Output is of shape ((N, 1, H, W), (N, C, H, W))
-        assert(logits.shape[1] == self.num_classes)
-        segmentation = torch.argmax(logits, dim=1, keepdim=True)
+        assert(logits.shape[2] == self.num_classes)
+
+        if self.ensemble_mode == "mean":
+            logits = torch.mean(logits, dim=0)
+            segmentation = torch.argmax(logits, dim=1, keepdim=True)
+        elif self.ensemble_mode == "median":
+            logits = torch.median(logits, dim=0)
+            segmentation = torch.argmax(logits, dim=1, keepdim=True)
+        elif self.ensemble_mode == "majority":
+            segmentations_across_reps = torch.argmax(logits, dim=2, keepdim=True).type(torch.int32)
+            segmentation = torch.mode(segmentations_across_reps, dim=0)
+
+        print(f"segmentation shape: {segmentation.shape}")
+        assert(len(segmentation.shape) == 4)
 
         return segmentation, torch.zeros_like(logits, device=logits.device).scatter_(1, segmentation, 1)
     
@@ -128,11 +143,12 @@ class BinarySegMaskMapping(BaseMaskMapping):
     threshold_func: callable
 
     
-    def __init__(self, dataset_mapping: dict, train_mapping: dict, threshold: float=None) -> None:
+    def __init__(self, dataset_mapping: dict, train_mapping: dict, threshold: float=None, ensemble_mode: str="mean") -> None:
         self.num_classes = 2
         self.gt_mapping = {"background": 0, "foreground": 1}
         self.dataset_mapping = self.check_input(dataset_mapping)
         self.train_mapping = self.check_input(train_mapping)
+        self.ensemble_mode = ensemble_mode
 
         threshold = (self.train_mapping["foreground"] + self.train_mapping["background"]) / 2 if threshold is None else threshold
         self.set_threshold_func(threshold)
@@ -169,15 +185,28 @@ class BinarySegMaskMapping(BaseMaskMapping):
         return train_mask.type(mask.type())
     
     def get_logits(self, mask: torch.Tensor):
-        # Mask is of shape (N, 1, H, W)
-        # Output is of shape (N, 1, H, W)
+        # Mask is of shape (reps, N, 1, H, W) 
+        # Output is of shape (reps,N, 1, H, W)
         return mask
     
     def get_segmentation(self, logits: torch.Tensor):
-        # Logits are of shape (N, 1, H, W)
+        # Logits are of shape (reps, N, 1, H, W)
         # Output is of shape ((N, 1, H, W), (N, 2, H, W))
-        segmentation = self.threshold_func(logits)
-        one_hot_shape = (logits.shape[0], 2, logits.shape[2], logits.shape[3])
+        if self.ensemble_mode == "mean":
+            logits = torch.mean(logits, dim=0)
+            segmentation = self.threshold_func(logits)
+        elif self.ensemble_mode == "median":
+            logits = torch.median(logits, dim=0)
+            segmentation = self.threshold_func(logits)
+        elif self.ensemble_mode == "majority":
+            segmentations_across_reps = self.threshold_func(logits).type(torch.int32)
+            segmentation, _ = torch.mode(segmentations_across_reps, dim=0)
+        else:
+            raise ValueError(f"Ensemble mode {self.ensemble_mode} has not been implemented.")
+        
+        assert(len(segmentation.shape) == 4)
+        
+        one_hot_shape = (segmentation.shape[0], 2, segmentation.shape[2], segmentation.shape[3])
 
         return segmentation, torch.zeros(one_hot_shape, device=logits.device).scatter_(1, segmentation, 1)
         
