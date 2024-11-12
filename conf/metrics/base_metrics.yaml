@@ -5,3 +5,7 @@ metric_fns_config:
   HausdorffDistanceMetric:
     include_background: False
     percentile: 95
+  BettiNumberMetric:
+    number: 0
+    connectivity: 2
+    include_background: False

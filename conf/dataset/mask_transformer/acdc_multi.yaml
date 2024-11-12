@@ -4,7 +4,7 @@ dataset_mapping:
   fg_class_1: 1
   fg_class_2: 2
   fg_class_3: 3
-train_switch: False
+train_switch: True
 prediction_type: ${diffusion.prediction_type}
 ensemble_mode: majority
 multiclass: True

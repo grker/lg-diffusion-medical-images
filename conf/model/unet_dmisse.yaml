@@ -1,3 +1,4 @@
+name: unet_dmisse
 image_size: [128, 128]
 in_channels: 2
 model_channels: 32

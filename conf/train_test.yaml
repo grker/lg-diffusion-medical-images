@@ -1,7 +1,7 @@
 defaults:
   - dataset: acdc
   - dataloader: base_dataloader
-  - model: unet_dmisse
+  - model: basic_unet
   - diffusion: base_diffusion
   - trainer: base_trainer
   - loss: mse_loss
