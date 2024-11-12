@@ -152,16 +152,13 @@ class DDPM(pl.LightningModule):
 
         logits = self.mask_transformer.get_logits(ensemble_mask)
         seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
-
-        print(f"shape of seg_mask: {seg_mask.shape}")
-        print(f"shape of one_hot_seg_mask: {one_hot_seg_mask.shape}")
-        print(f"shape of gt_masks: {gt_masks.shape}")
         
-        
-        print(f"histogram of seg_mask: {torch.histc(seg_mask[0], bins=10)}")
-        print(f"histogram of gt_mask: {torch.histc(gt_masks[0], bins=10)}")
+        print(f"histogram of seg_mask ranging from {torch.min(seg_mask)} to {torch.max(seg_mask)}: {torch.histc(seg_mask[0], bins=10)}")
+        print(f"histogram of gt_mask ranging from {torch.min(gt_masks)} to {torch.max(gt_masks)}: {torch.histc(gt_masks[0], bins=10)}")
 
         compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+
+        # visualize the segmentation
         index = random.randint(0, num_samples-1)        
         visualize_segmentation(images, gt_masks, seg_mask, ensemble_mask, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index])
         if self.repetitions > 1:
@@ -202,13 +199,8 @@ class DDPM(pl.LightningModule):
         min_per_sample_std = torch.min(torch.flatten(std_mask, start_dim=1), dim=1).values
         max_per_sample_std = torch.max(torch.flatten(std_mask, start_dim=1), dim=1).values
         
-        print(f"shape of min_per_sample_mean: {min_per_sample_mean.shape}")
-
         mean_mask = (mean_mask - min_per_sample_mean) / (max_per_sample_mean - min_per_sample_mean)
         std_mask = (std_mask - min_per_sample_std) / (max_per_sample_std - min_per_sample_std)
-
-        print(f"shape of mean_mask: {mean_mask.shape}")
-        print(f"shape of std_mask: {std_mask.shape}")
 
         for idx in range(num_samples):
             wandb.log({"mean_mask": create_wandb_image(mean_mask[idx], caption=f"Testing VarianceBIdx_{batch_idx}_Idx_{idx}")})

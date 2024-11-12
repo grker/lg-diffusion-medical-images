@@ -185,7 +185,6 @@ def normalize_to_0_1(tensor: torch.Tensor, max=None, min=None):
 
 def visualize_mean_variance(ensemble_mask: torch.Tensor, phase: str, batch_idx: int, class_wise:bool=True, index_list:list[int]=None):
     # ensemble mask should be of shape (reps, num_samples, channels, height, width)
-    print(f"ensemble_mask shape: {ensemble_mask.shape}")
 
     if index_list is None:
         print("No index list provided, using random indices")
@@ -211,7 +210,6 @@ def visualize_mean_variance_class_wise(ensemble_mask: torch.Tensor, phase: str, 
     mean_mask_classes = torch.empty((ensemble_mask.shape[1], num_classes, ensemble_mask.shape[3], ensemble_mask.shape[4]))
     std_mask_classes = torch.empty((ensemble_mask.shape[1], num_classes, ensemble_mask.shape[3], ensemble_mask.shape[4]))
 
-    print(f"shape ensemble_mask: {ensemble_mask.shape}")
 
     for class_idx in range(num_classes):
         class_mask = ensemble_mask[:, :, class_idx, :, :]
@@ -219,25 +217,23 @@ def visualize_mean_variance_class_wise(ensemble_mask: torch.Tensor, phase: str, 
         mean_mask = torch.mean(class_mask, dim=0)
         std_mask = torch.std(class_mask, dim=0)
 
+        # print(f"min mean_mask before clamp: {torch.min(mean_mask)}")
+        # print(f"max mean_mask before clamp: {torch.max(mean_mask)}")
+
         mean_mask = torch.clamp(mean_mask, min=0, max=1)
         std_mask = torch.clamp(std_mask, min=0, max=1)
 
-        print(f"shape mean_mask: {mean_mask.shape}")
-        print(f"shape mean mask classes: {mean_mask_classes[:, class_idx, :, :].shape}")
-        print(f"shape mean mask classes assignment: {mean_mask_classes.shape}")
+        # print(f"min mean_mask after clamp: {torch.min(mean_mask)}")
+        # print(f"max mean_mask after clamp: {torch.max(mean_mask)}")
+        # print(f"mean_mask {mean_mask}")
 
         mean_mask_classes[:, class_idx, :, :] = mean_mask
         std_mask_classes[:, class_idx, :, :] = std_mask
 
     for idx in range(mean_mask_classes.shape[0]):
         mask = torchvision.utils.make_grid(mean_mask_classes[idx].unsqueeze(1), nrow=min(num_classes, 4), padding=10)
-        print(f"shape mask: {mask.shape}")
-        print(f"type mask: {type(mask)}")
-        print(f"min mask: {torch.min(mask)}")
-        print(f"max mask: {torch.max(mask)}")
-
         wandb.log({"mean_mask": wandb.Image(torchvision.utils.make_grid(mean_mask_classes[idx].unsqueeze(1), nrow=min(num_classes, 4), padding=10), caption=f"Testing VarianceBIdx_{batch_idx}_Idx_{idx}")})
-        wandb.log({"std_mask": wandb.Image(torchvision.utils.make_grid(mean_mask_classes[idx].unsqueeze(1), nrow=min(num_classes, 4), padding=10), caption=f"Testing VarianceBIdx_{batch_idx}_Idx_{idx}")})
+        wandb.log({"std_mask": wandb.Image(torchvision.utils.make_grid(std_mask_classes[idx].unsqueeze(1), nrow=min(num_classes, 4), padding=10), caption=f"Testing VarianceBIdx_{batch_idx}_Idx_{idx}")})
 
 
 def visualize_mean_variance_binary(ensemble_mask: torch.Tensor, phase: str, batch_idx: int):
@@ -245,6 +241,7 @@ def visualize_mean_variance_binary(ensemble_mask: torch.Tensor, phase: str, batc
     std_mask = torch.std(ensemble_mask, dim=0)
 
     mean_mask = torch.clamp(mean_mask, min=0, max=1)
+    
     std_mask = torch.clamp(std_mask, min=0, max=1)
 
     for idx in range(mean_mask.shape[0]):

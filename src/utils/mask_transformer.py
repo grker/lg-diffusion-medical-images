@@ -85,7 +85,7 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
         return dataset_mask.type(mask.type())
     
     def gt_to_train_mask(self, mask: torch.Tensor):
-        fg_value = 1 if self.train_switch else 0
+        fg_value = 0 if self.train_switch else 1
         train_mask = torch.empty(mask.shape[0], self.get_num_train_channels(), mask.shape[2], mask.shape[3])
 
         for class_name, values in self.gt_mapping.items():
@@ -96,7 +96,7 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
     def get_logits(self, mask: torch.Tensor):
         # Mask is of shape (reps, N, num_classes, H, W)
         # Output is of shape (reps, N, num_classes, H, W)
-        return mask if self.train_switch else (-1) * mask
+        return (-1) * mask if self.train_switch else mask
         
 
     def get_segmentation(self, logits: torch.Tensor):
