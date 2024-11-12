@@ -75,7 +75,7 @@ def main(config: SegmentationConfig):
             max_epochs=config.trainer.max_epochs,
             enable_progress_bar=True,
             callbacks=[],
-            check_val_every_n_epoch=20,
+            check_val_every_n_epoch=2,
             log_every_n_steps=1,
             enable_checkpointing=True,
             benchmark=True,

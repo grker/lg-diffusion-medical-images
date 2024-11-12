@@ -99,6 +99,7 @@ class DDPM(pl.LightningModule):
     
         
     def training_step(self, batch, batch_idx):
+        self.log("learning rate", self.trainer.optimizers[0].param_groups[0]["lr"])
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
 
@@ -126,46 +127,91 @@ class DDPM(pl.LightningModule):
     def test_step(self,batch,batch_idx):
         return self.val_test_step(batch,batch_idx,"test")
     
-
+    
     def val_test_step(self, batch, batch_idx, phase):
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
-        ensemble_mask = torch.zeros_like(images, device=images.device)
+        ensemble_shape = (self.repetitions, *gt_train_masks.shape)
+        ensemble_mask = torch.zeros(ensemble_shape, device=images.device)
 
         self.model.eval()
-
-        ensemble_shape = (self.repetitions, *gt_train_masks.shape)
-        print(f"ensemble shape: {ensemble_shape}")
-        ensemble_mask = torch.zeros(ensemble_shape, device=images.device)
         with torch.no_grad():
             for reps in range(self.repetitions):
                 noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
-
                 for t in tqdm(self.scheduler.timesteps):
-                    model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device))
+                    model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device)).detach()
                     noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
-
-                ensemble_mask[reps] = noisy_mask
+                    del model_output  # Free model_output explicitly
+                    torch.cuda.empty_cache()  # Clear memory cache if needed
+                ensemble_mask[reps] = noisy_mask.detach()  # Detach to prevent gradient history
 
         self.model.train()
-        # ensemble_mask = ensemble_mask/self.repetitions
 
         logits = self.mask_transformer.get_logits(ensemble_mask)
         seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
-        
-        print(f"histogram of seg_mask ranging from {torch.min(seg_mask)} to {torch.max(seg_mask)}: {torch.histc(seg_mask[0], bins=10)}")
-        print(f"histogram of gt_mask ranging from {torch.min(gt_masks)} to {torch.max(gt_masks)}: {torch.histc(gt_masks[0], bins=10)}")
 
-        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+        # Detach before passing for metric computation
+        compute_and_log_metrics(self.metrics, seg_mask.detach(), gt_masks.detach(), phase, self.log)
 
-        # visualize the segmentation
-        index = random.randint(0, num_samples-1)        
-        visualize_segmentation(images, gt_masks, seg_mask, ensemble_mask, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index])
+        # Visualization
+        index = random.randint(0, num_samples - 1)
+        visualize_segmentation(
+            images, gt_masks, seg_mask, ensemble_mask, phase, 
+            self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index]
+        )
         if self.repetitions > 1:
-            # need multiple samples per sample in order to compute the std
             visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
 
+        # Clear ensemble_mask if not needed further
+        del ensemble_mask
+        del logits
+        del seg_mask
+        del one_hot_seg_mask
+        torch.cuda.empty_cache()
+    
         return 0
+
+    
+
+    # def val_test_step(self, batch, batch_idx, phase):
+    #     images, gt_masks, gt_train_masks = unpack_batch(batch)
+    #     num_samples = images.shape[0]
+    #     ensemble_mask = torch.zeros_like(images, device=images.device)
+
+    #     self.model.eval()
+
+    #     ensemble_shape = (self.repetitions, *gt_train_masks.shape)
+    #     print(f"ensemble shape: {ensemble_shape}")
+    #     ensemble_mask = torch.zeros(ensemble_shape, device=images.device)
+    #     with torch.no_grad():
+    #         for reps in range(self.repetitions):
+    #             noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
+
+    #             for t in tqdm(self.scheduler.timesteps):
+    #                 model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device))
+    #                 noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
+
+    #             ensemble_mask[reps] = noisy_mask
+
+    #     self.model.train()
+    #     # ensemble_mask = ensemble_mask/self.repetitions
+
+    #     logits = self.mask_transformer.get_logits(ensemble_mask)
+    #     seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
+        
+    #     print(f"histogram of seg_mask ranging from {torch.min(seg_mask)} to {torch.max(seg_mask)}: {torch.histc(seg_mask[0], bins=10)}")
+    #     print(f"histogram of gt_mask ranging from {torch.min(gt_masks)} to {torch.max(gt_masks)}: {torch.histc(gt_masks[0], bins=10)}")
+
+    #     compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+
+    #     # visualize the segmentation
+    #     index = random.randint(0, num_samples-1)        
+    #     visualize_segmentation(images, gt_masks, seg_mask, ensemble_mask, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index])
+    #     if self.repetitions > 1:
+    #         # need multiple samples per sample in order to compute the std
+    #         visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
+
+    #     return 0
     
 
     def test_variance(self, image: torch.Tensor, gt_mask: torch.Tensor, gt_train_mask: torch.Tensor, reps: int, batch_idx: int):
@@ -210,7 +256,12 @@ class DDPM(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.optimizer_config.lr)
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+
+        if hasattr(torch.optim.lr_scheduler, self.optimizer_config.scheduler.name):
+            args = self.optimizer_config.scheduler.args if self.optimizer_config.scheduler.args is not None else {}
+            scheduler = getattr(torch.optim.lr_scheduler, self.optimizer_config.scheduler.name)(optimizer, **args)
+        else:
+            raise ValueError(f"Scheduler {self.optimizer_config.scheduler.name} not found!")
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
     

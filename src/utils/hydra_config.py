@@ -115,10 +115,14 @@ class LossConfig:
 class MetricsConfig:
     metric_fns_config: dict
 
+class SchedulerConfig:
+    name: str
+    args: dict
+
 class OptimizerConfig:
     lr: float
     weight_decay: float
-
+    scheduler: SchedulerConfig
 
 class SegmentationConfig:
     project_name: str
