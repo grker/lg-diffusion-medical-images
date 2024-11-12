@@ -38,6 +38,7 @@ def compute_and_log_metrics(metric_fns: dict, logits: torch.Tensor,  gt: torch.T
     for metric_name, metric_fn in metric_fns.items():
         try: 
             score = metric_fn(logits, gt)
+            print(f"{metric_name} score: {score}")
             nan_indices = torch.nonzero(~torch.isnan(score), as_tuple=True)[0]
             score = score[nan_indices]
 
