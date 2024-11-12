@@ -3,10 +3,12 @@ from torch.utils.data.dataloader import DataLoader
 from torch.utils.data import random_split
 import torch.nn as nn
 import pytorch_lightning as pl
+from omegaconf import open_dict
+
+from utils.mask_transformer import BaseMaskMapping
 from utils.hydra_config import DatasetConfig, DataloaderConfig, SegmentationConfig, UNetConfig, DiffusionConfig
 from models.base_segmentation import BaseSegmentation
-from omegaconf import open_dict
-from utils.mask_transformer import BaseMaskMapping
+from modules.timestep_basic_unet import TimestepsBasicUNet
 
 
 class DmiiseSegmentation(BaseSegmentation):
@@ -17,7 +19,13 @@ class DmiiseSegmentation(BaseSegmentation):
         from modules.unet import UNetModel
         from models.dmiise.diffusion import DDPM
 
-        model = UNetModel(self.config.model)
+        if self.config.model.name == "unet_dmisse":
+            model = UNetModel(self.config.model)
+        elif self.config.model.name == "basic_unet":
+            model = TimestepsBasicUNet(self.config.model)
+        else:
+            raise ValueError(f"Model {self.config.model.name} not found!")
+        
         metrics = self.create_metrics_fn(num_classes)
         loss = self.create_loss()
         return DDPM(model, self.config.diffusion, self.config.optimizer, metrics, mask_transformer, loss)

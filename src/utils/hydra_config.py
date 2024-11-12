@@ -3,6 +3,7 @@ from typing import Union
 
 
 class ModelConfig:
+    name: str
     pass
 
 class ResNetConfig(ModelConfig):
@@ -100,6 +101,8 @@ class BasicUNetConfig(ModelConfig):
     out_channels: int
     features: list[int]
     dropout: float
+    emb_channels: int
+    time_start: int
 
 class Loss:
     scale: float
