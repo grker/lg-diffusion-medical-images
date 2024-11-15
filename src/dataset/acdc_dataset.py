@@ -4,8 +4,9 @@ import nibabel as nib
 import numpy as np
 import cv2
 from torchvision.transforms import Normalize
-
 from torch.utils.data import Dataset
+from monai.transforms import CenterSpatialCrop
+
 from utils.hydra_config import DatasetConfig
 from utils.mask_transformer import generate_mask_mapping, BaseMaskMapping
 
@@ -37,7 +38,10 @@ class ACDCDataset(Dataset):
         self.patient_metadata = []
         self.mask_transformer = generate_mask_mapping(config.mask_transformer)
 
+        self.cropping = CenterSpatialCrop(roi_size=[154, 154])
+
         self.load_data()
+        
 
 
     def load_data(self):
@@ -56,6 +60,7 @@ class ACDCDataset(Dataset):
         self.gt_train = self.mask_transformer.gt_to_train_mask(self.gt)
         
         print(f"gt train shape: {self.gt_train.shape}")
+        print(f"data shape: {self.data.shape}")
         print(f"histogram of gt train: {torch.histc(self.gt_train, bins=10)}")
 
 
@@ -109,17 +114,19 @@ class ACDCDataset(Dataset):
             if frame['gt']:
                 gt_tmp = nib.load(os.path.join(patient_path, frame['file'])).get_fdata()
                 gt_tmp = np.moveaxis(gt_tmp, -1, 0)
-                gt_resized = np.zeros((gt_tmp.shape[0], self.image_size[0], self.image_size[1]))
+                gt_resized = torch.zeros((gt_tmp.shape[0], 154, 154))
                 for i in range(gt_tmp.shape[0]):
-                    gt_resized[i] = cv2.resize(gt_tmp[i], self.image_size)
-                gt = torch.from_numpy(gt_resized)
+                    # gt_resized[i] = cv2.resize(gt_tmp[i], self.image_size)
+                    gt_resized[i] = self.cropping(torch.from_numpy(gt_tmp[i]).unsqueeze(0)).squeeze(0)
+                gt =gt_resized
             else:
                 data_tmp = nib.load(os.path.join(patient_path, frame['file'])).get_fdata()
                 data_tmp = np.moveaxis(data_tmp, -1, 0)
-                data_resized = np.zeros((data_tmp.shape[0], self.image_size[0], self.image_size[1]))
+                data_resized = torch.zeros((data_tmp.shape[0], 154, 154))
                 for i in range(data_tmp.shape[0]):
-                    data_resized[i] = cv2.resize(data_tmp[i], self.image_size)
-                data = torch.from_numpy(data_resized)
+                    # data_resized[i] = cv2.resize(data_tmp[i], self.image_size)
+                    data_resized[i] = self.cropping(torch.from_numpy(data_tmp[i]).unsqueeze(0)).squeeze(0)
+                data = data_resized
         
         good_indices = []
 
@@ -147,9 +154,6 @@ class ACDCDataset(Dataset):
     
     def get_image_width(self):
         return self.data.shape[3]
-    
-
-
     
 
 class ACDCDatasetGTAutoEncoder(ACDCDataset):
