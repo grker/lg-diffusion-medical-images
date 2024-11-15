@@ -14,6 +14,7 @@ train: True
 model_path: model/model.pth
 seed: 42
 
+wandb_tags: ["test"]
 
 
 
