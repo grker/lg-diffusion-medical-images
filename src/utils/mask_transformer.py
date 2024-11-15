@@ -102,6 +102,7 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
     def get_segmentation(self, logits: torch.Tensor):
         # Logits are of shape (reps, N, num_classes, H, W)
         # Output is of shape ((N, 1, H, W), (N, C, H, W))
+        print(f"logits shape: {logits.shape}")
         assert(logits.shape[2] == self.num_classes)
 
         if self.ensemble_mode == "mean":
@@ -117,7 +118,8 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
         print(f"segmentation shape: {segmentation.shape}")
         assert(len(segmentation.shape) == 4)
 
-        return segmentation, torch.zeros_like(logits, device=logits.device).scatter_(1, segmentation, 1)
+        # return segmentation, torch.zeros_like(logits, device=logits.device).scatter_(1, segmentation, 1)
+        return segmentation
     
     def gt_mapping_for_visualization(self):
         offset = self.num_classes + 1
@@ -204,6 +206,7 @@ class BinarySegMaskMapping(BaseMaskMapping):
         else:
             raise ValueError(f"Ensemble mode {self.ensemble_mode} has not been implemented.")
         
+        print(f"segmentation shape: {segmentation.shape}")
         assert(len(segmentation.shape) == 4)
         
         one_hot_shape = (segmentation.shape[0], 2, segmentation.shape[2], segmentation.shape[3])

@@ -99,6 +99,7 @@ class DDPM(pl.LightningModule):
     
         
     def training_step(self, batch, batch_idx):
+        self.model.train()
         self.log("learning rate", self.trainer.optimizers[0].param_groups[0]["lr"])
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
@@ -129,13 +130,18 @@ class DDPM(pl.LightningModule):
     
     
     def val_test_step(self, batch, batch_idx, phase):
+        self.model.eval()
+
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
         ensemble_shape = (self.repetitions, *gt_train_masks.shape)
-        ensemble_mask = torch.zeros(ensemble_shape, device=images.device)
+        
+        # ensemble_mask = [] # make a list of tensors
 
-        self.model.eval()
+        
         with torch.no_grad():
+            # ensemble_mask = torch.zeros(ensemble_shape, device=images.device)
+            ensemble_mask = []
             for reps in range(self.repetitions):
                 noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
                 for t in tqdm(self.scheduler.timesteps):
@@ -143,12 +149,12 @@ class DDPM(pl.LightningModule):
                     noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
                     del model_output  # Free model_output explicitly
                     torch.cuda.empty_cache()  # Clear memory cache if needed
-                ensemble_mask[reps] = noisy_mask.detach()  # Detach to prevent gradient history
+                # ensemble_mask[reps] = noisy_mask.detach()  # Detach to prevent gradient history
+                ensemble_mask.append(noisy_mask.detach())
 
-        self.model.train()
-
-        logits = self.mask_transformer.get_logits(ensemble_mask)
-        seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
+        logits = self.mask_transformer.get_logits(torch.stack(ensemble_mask, dim=0))
+        # seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
+        seg_mask = self.mask_transformer.get_segmentation(logits)
 
         # Detach before passing for metric computation
         compute_and_log_metrics(self.metrics, seg_mask.detach(), gt_masks.detach(), phase, self.log)
@@ -166,7 +172,6 @@ class DDPM(pl.LightningModule):
         del ensemble_mask
         del logits
         del seg_mask
-        del one_hot_seg_mask
         torch.cuda.empty_cache()
     
         return 0

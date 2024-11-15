@@ -36,12 +36,15 @@ def main(config: SegmentationConfig):
     wandb.config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
     wandb.login(key=os.environ["WANDB_API_KEY"])
 
-    wandb_tags = [
-        config.project_name,
-        config.dataset.name,
-        "multiclass" if config.dataset.mask_transformer.multiclass else "binary"
-    ]
-    
+    if config.wandb_tags is None:   
+        wandb_tags = [
+            config.project_name,
+            config.dataset.name,
+            "multiclass" if config.dataset.mask_transformer.multiclass else "binary"
+        ]
+    else:
+        wandb_tags = config.wandb_tags
+      
     wandb.init(
         project="difseg", config=wandb.config, tags=wandb_tags, job_type="train", dir=wandb_path
     )
@@ -75,7 +78,7 @@ def main(config: SegmentationConfig):
             max_epochs=config.trainer.max_epochs,
             enable_progress_bar=True,
             callbacks=[],
-            check_val_every_n_epoch=2,
+            check_val_every_n_epoch=10,
             log_every_n_steps=1,
             enable_checkpointing=True,
             benchmark=True,

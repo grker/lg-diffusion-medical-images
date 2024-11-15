@@ -25,8 +25,16 @@ class UnetSegmentation(BaseSegmentation):
  
     def create_model(self):
         from monai.networks.nets import BasicUNet
+
+        unet_config = {
+            "spatial_dims": self.config.model.spatial_dims,
+            "in_channels": self.config.model.in_channels,
+            "out_channels": self.config.model.out_channels,
+            "features": self.config.model.features,
+            "dropout": self.config.model.dropout,
+        }
         
-        return BasicUNet(**self.config.model)
+        return BasicUNet(**unet_config)
     
     def initialize(self):
         dataset, dataloader = self.create_dataset_dataloader()
@@ -78,9 +86,11 @@ class UnetSegmentationModel(pl.LightningModule):
     def val_test_step(self, batch, batch_idx, phase):
         images, gt_masks, _ = unpack_batch(batch)
         pred_masks = self.model(images)
-
+        
+        pred_masks = pred_masks.unsqueeze(0)
         logits = self.mask_transformer.get_logits(pred_masks)
-        seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
+        # seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
+        seg_mask = self.mask_transformer.get_segmentation(logits)
 
         compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
         visualize_segmentation(images, gt_masks, seg_mask, pred_masks, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes)
