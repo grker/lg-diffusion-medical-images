@@ -38,13 +38,27 @@ def compute_and_log_metrics(metric_fns: dict, logits: torch.Tensor,  gt: torch.T
     for metric_name, metric_fn in metric_fns.items():
         try: 
             score = metric_fn(logits, gt)
-            print(f"{metric_name} score: {score}")
-            nan_indices = torch.nonzero(~torch.isnan(score), as_tuple=True)[0]
-            score = score[nan_indices]
 
-            score = score.mean().item()
-            logger(f"{phase}_{str(metric_name)}", score)
+            if hasattr(metric_fn, "logging_names") and metric_fn.logging_names is not None:
+                if len(metric_fn.logging_names) > 1:
+                    assert len(metric_fn.logging_names) == len(score), "Number of logging names must match number of scores"
+                    for i, name in enumerate(metric_fn.logging_names):
+                        logger(f"{phase}_{str(name)}", clean_nan_scores_and_avg(score[i]))
+                elif len(metric_fn.logging_names) == 1:
+                    assert type(score) == torch.Tensor, "Score must be a tensor"
+                    logger(f"{phase}_{str(metric_fn.logging_names[0])}", clean_nan_scores_and_avg(score))
+                else:
+                    raise ValueError("Invalid number of logging names")
+            else:
+                assert type(score) == torch.Tensor, "Score must be a tensor"
+                logger(f"{phase}_{str(metric_name)}", clean_nan_scores_and_avg(score))
+                
         except Exception as e:
             print(f"{metric_fn} cannot be computed. Received Error: {str(e)}")
 
     return scores
+
+
+def clean_nan_scores_and_avg(scores: torch.Tensor):
+    nan_indices = torch.nonzero(~torch.isnan(scores), as_tuple=True)[0]
+    return scores[nan_indices].mean().item()
