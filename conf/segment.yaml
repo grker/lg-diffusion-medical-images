@@ -4,7 +4,7 @@ defaults:
   - model: basic_unet
   - diffusion: base_diffusion
   - trainer: base_trainer
-  - loss: mse_loss
+  - loss: x_0_pred_loss
   - metrics: base_metrics
   - optimizer: base_optimizer
   - _self_
@@ -13,8 +13,9 @@ project_name: dmiise
 train: True
 model_path: model/model.pth
 seed: 42
+validation_period: 10
 
-wandb_tags: ["test"]
+wandb_tags: null
 
 
 
