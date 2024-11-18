@@ -17,7 +17,7 @@ class DiceMetric(monai.metrics.DiceMetric):
         return super().__call__(y_pred, y)
     
 
-class HausdorffDistanceMetric(monai.metrics.HausdorffDistanceMetric):
+class HausdorffDistanceMetric2(monai.metrics.HausdorffDistanceMetric):
     num_classes: int=None
 
     def __init__(self, **kwargs):
@@ -34,6 +34,8 @@ class HausdorffDistanceMetric(monai.metrics.HausdorffDistanceMetric):
         if self.num_classes is None:
             logger.warning("num_classes not set, defaulting to 2")
             self.num_classes = 2
+
+        num_samples = y_pred.shape[0]
         
         one_hot_shape = (y_pred.shape[0], self.num_classes, y_pred.shape[2], y_pred.shape[3])
         y_pred = one_hot_encode(y_pred, one_hot_shape)
@@ -41,9 +43,11 @@ class HausdorffDistanceMetric(monai.metrics.HausdorffDistanceMetric):
 
         hd_per_class = super().__call__(y_pred, y)
         if self.num_classes > 2 or self.include_background:
-            return torch.mean(hd_per_class, dim=1, keepdim=True)
+            mean = torch.mean(hd_per_class, dim=1, keepdim=True)
+            return mean
         else:
             return hd_per_class    
+        # return torch.zeros(num_samples, device="cpu")
 
 
 class BettiNumberMetric():

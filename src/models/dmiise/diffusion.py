@@ -134,6 +134,8 @@ class DDPM(pl.LightningModule):
 
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
+
+        print(f"memory allocated before ensemble mask computation: {torch.cuda.memory_allocated()}")
         
         with torch.no_grad():
             ensemble_mask = []
@@ -142,24 +144,25 @@ class DDPM(pl.LightningModule):
                 for t in tqdm(self.scheduler.timesteps):
                     model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device))
                     noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
-                ensemble_mask.append(noisy_mask.detach())
+                ensemble_mask.append(noisy_mask.detach().cpu())
 
             logits = self.mask_transformer.get_logits(torch.stack(ensemble_mask, dim=0))
-            seg_mask = self.mask_transformer.get_segmentation(logits).detach().cpu()
-            gt_masks = gt_masks.detach().cpu()
-
+            seg_mask = self.mask_transformer.get_segmentation(logits)
+            gt_masks = gt_masks.to(device=seg_mask.device)
+            
             # Detach before passing for metric computation
             compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
 
             # Visualization
             index = random.randint(0, num_samples - 1)
             visualize_segmentation(
-                images, gt_masks, seg_mask, ensemble_mask, phase, 
+                images, gt_masks, seg_mask, None, phase, 
                 self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index]
             )
             if self.repetitions > 1:
                 visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
-    
+            
+        print(f"memory allocated after ensemble mask computation: {torch.cuda.memory_allocated()}")
         return 0
 
     

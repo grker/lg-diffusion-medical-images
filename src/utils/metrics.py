@@ -32,13 +32,12 @@ def generate_metrics_fn(config: MetricsConfig, num_classes: int):
     return metric_fns
 
 
-def compute_and_log_metrics(metric_fns: dict, logits: torch.Tensor,  gt: torch.Tensor, phase: str, logger) -> dict:
+def compute_and_log_metrics(metric_fns: dict, seg_mask: torch.Tensor,  gt: torch.Tensor, phase: str, logger) -> dict:
     scores = {}
     print(f"allocated memory before metric computation: {torch.cuda.memory_allocated()}")
     for metric_name, metric_fn in metric_fns.items():
         try: 
-            score = metric_fn(logits, gt)
-
+            score = metric_fn(seg_mask, gt)
             if hasattr(metric_fn, "logging_names") and metric_fn.logging_names is not None:
                 if len(metric_fn.logging_names) > 1:
                     assert len(metric_fn.logging_names) == len(score), "Number of logging names must match number of scores"
