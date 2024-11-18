@@ -3,10 +3,10 @@
 #SBATCH --mail-type=NONE # mail configuration: NONE, BEGIN, END, FAIL, REQUEUE, AL
 #SBATCH --output=/data/%u/master_thesis/jobs/%j.out # where to store the output (%j is the JOBID), subdirectory "jobs" must exist
 #SBATCH --error=/data/%u/master_thesis/jobs/%j.err # where to store error messages
-#SBATCH --time=06:00:00
+#SBATCH --time=04:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=V100:1
+#SBATCH --gpus=1
 
 USERNAME=$USER
 PROJECT_NAME=master_thesis
@@ -68,4 +68,5 @@ cd ${DIRECTORY}
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-python main.py project_name=dmiise diffusion.device=gpu dataset=acdc
+python main.py project_name=unet_seg validation_period=1 trainer.max_epochs=300 dataloader.batch_size=64 dataloader.val_batch_size=128 diffusion=sample_diffusion dataset/mask_transformer=acdc_multi diffusion.repetitions=1 dataset.mask_transformer.train_switch=False
+# python main.py trainer.max_epochs=100 dataloader.batch_size=64 dataloader.val_batch_size=64 dataset/mask_transformer=acdc_multi
