@@ -183,14 +183,22 @@ def normalize_to_0_1(tensor: torch.Tensor, max=None, min=None):
         
         return (tensor - min_per_sample) / (max_per_sample - min_per_sample)
 
-def visualize_mean_variance(ensemble_mask: torch.Tensor, phase: str, batch_idx: int, class_wise:bool=True, index_list:list[int]=None):
-    # ensemble mask should be of shape (reps, num_samples, channels, height, width)
+def visualize_mean_variance(ensemble_mask: list[torch.Tensor], phase: str, batch_idx: int, class_wise:bool=True, index_list:list[int]=None):
+    """
+        :param ensemble_mask: list of tensors of shape (num_samples, channels, height, width)
+        :param phase: str, phase of the experiment
+        :param batch_idx: int, batch index
+        :param class_wise: bool, whether to visualize class-wise mean and variance
+        :param index_list: list of int, indices of the samples to visualize
+    """
 
     if index_list is None:
         print("No index list provided, using random indices")
         index_list = [random.randint(0, ensemble_mask.shape[1]-1)]
 
-    ensemble_mask = ensemble_mask[:, index_list, :, :, :]
+    ensemble_mask = [rep[index_list] for rep in ensemble_mask]
+    ensemble_mask = torch.stack(ensemble_mask, dim=0)
+    print(f"device of ensemble_mask: {ensemble_mask.device}")
 
     if ensemble_mask.shape[2] == 1:
         # binary segmentation
