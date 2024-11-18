@@ -134,89 +134,34 @@ class DDPM(pl.LightningModule):
 
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
-        ensemble_shape = (self.repetitions, *gt_train_masks.shape)
-        
-        # ensemble_mask = [] # make a list of tensors
-
         
         with torch.no_grad():
-            # ensemble_mask = torch.zeros(ensemble_shape, device=images.device)
             ensemble_mask = []
             for reps in range(self.repetitions):
                 noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
                 for t in tqdm(self.scheduler.timesteps):
-                    model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device)).detach()
+                    model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device))
                     noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
-                    del model_output  # Free model_output explicitly
-                    torch.cuda.empty_cache()  # Clear memory cache if needed
-                # ensemble_mask[reps] = noisy_mask.detach()  # Detach to prevent gradient history
                 ensemble_mask.append(noisy_mask.detach())
 
-        logits = self.mask_transformer.get_logits(torch.stack(ensemble_mask, dim=0))
-        # seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
-        seg_mask = self.mask_transformer.get_segmentation(logits)
+            logits = self.mask_transformer.get_logits(torch.stack(ensemble_mask, dim=0))
+            seg_mask = self.mask_transformer.get_segmentation(logits).detach().cpu()
+            gt_masks = gt_masks.detach().cpu()
 
-        # Detach before passing for metric computation
-        compute_and_log_metrics(self.metrics, seg_mask.detach(), gt_masks.detach(), phase, self.log)
+            # Detach before passing for metric computation
+            compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
 
-        # Visualization
-        index = random.randint(0, num_samples - 1)
-        visualize_segmentation(
-            images, gt_masks, seg_mask, ensemble_mask, phase, 
-            self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index]
-        )
-        if self.repetitions > 1:
-            visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
-
-        # Clear ensemble_mask if not needed further
-        del ensemble_mask
-        del logits
-        del seg_mask
-        torch.cuda.empty_cache()
+            # Visualization
+            index = random.randint(0, num_samples - 1)
+            visualize_segmentation(
+                images, gt_masks, seg_mask, ensemble_mask, phase, 
+                self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index]
+            )
+            if self.repetitions > 1:
+                visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
     
         return 0
 
-    
-
-    # def val_test_step(self, batch, batch_idx, phase):
-    #     images, gt_masks, gt_train_masks = unpack_batch(batch)
-    #     num_samples = images.shape[0]
-    #     ensemble_mask = torch.zeros_like(images, device=images.device)
-
-    #     self.model.eval()
-
-    #     ensemble_shape = (self.repetitions, *gt_train_masks.shape)
-    #     print(f"ensemble shape: {ensemble_shape}")
-    #     ensemble_mask = torch.zeros(ensemble_shape, device=images.device)
-    #     with torch.no_grad():
-    #         for reps in range(self.repetitions):
-    #             noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
-
-    #             for t in tqdm(self.scheduler.timesteps):
-    #                 model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device))
-    #                 noisy_mask = self.scheduler.step(model_output=model_output, timestep=t, sample=noisy_mask).prev_sample
-
-    #             ensemble_mask[reps] = noisy_mask
-
-    #     self.model.train()
-    #     # ensemble_mask = ensemble_mask/self.repetitions
-
-    #     logits = self.mask_transformer.get_logits(ensemble_mask)
-    #     seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
-        
-    #     print(f"histogram of seg_mask ranging from {torch.min(seg_mask)} to {torch.max(seg_mask)}: {torch.histc(seg_mask[0], bins=10)}")
-    #     print(f"histogram of gt_mask ranging from {torch.min(gt_masks)} to {torch.max(gt_masks)}: {torch.histc(gt_masks[0], bins=10)}")
-
-    #     compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
-
-    #     # visualize the segmentation
-    #     index = random.randint(0, num_samples-1)        
-    #     visualize_segmentation(images, gt_masks, seg_mask, ensemble_mask, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index])
-    #     if self.repetitions > 1:
-    #         # need multiple samples per sample in order to compute the std
-    #         visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
-
-    #     return 0
     
 
     def test_variance(self, image: torch.Tensor, gt_mask: torch.Tensor, gt_train_mask: torch.Tensor, reps: int, batch_idx: int):

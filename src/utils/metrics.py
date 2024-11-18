@@ -34,7 +34,7 @@ def generate_metrics_fn(config: MetricsConfig, num_classes: int):
 
 def compute_and_log_metrics(metric_fns: dict, logits: torch.Tensor,  gt: torch.Tensor, phase: str, logger) -> dict:
     scores = {}
-
+    print(f"allocated memory before metric computation: {torch.cuda.memory_allocated()}")
     for metric_name, metric_fn in metric_fns.items():
         try: 
             score = metric_fn(logits, gt)
@@ -56,6 +56,7 @@ def compute_and_log_metrics(metric_fns: dict, logits: torch.Tensor,  gt: torch.T
         except Exception as e:
             print(f"{metric_fn} cannot be computed. Received Error: {str(e)}")
 
+    print(f"allocated memory after metric computation: {torch.cuda.memory_allocated()}")
     return scores
 
 

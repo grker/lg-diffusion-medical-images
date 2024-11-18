@@ -26,12 +26,9 @@ class HausdorffDistanceMetric(monai.metrics.HausdorffDistanceMetric):
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
         
         def one_hot_encode(tensor: torch.Tensor, one_hot_shape: tuple[int, int, int, int]):
-            print(f"one hot encode func, tensor device: {tensor.device}")
-            tensor = tensor.type(torch.int64).detach().cpu()
-            print(f"one hot encode func after, tensor device: {tensor.device}")
-
-            one_hot_tensor = torch.zeros(one_hot_shape, device='cpu')
-            print(f"one hot encode device: {one_hot_tensor.device}")
+            with torch.no_grad():
+                tensor = tensor.type(torch.int64)
+                one_hot_tensor = torch.zeros(one_hot_shape, device=tensor.device).scatter_(1, tensor, 1)
             return one_hot_tensor
 
         if self.num_classes is None:
@@ -62,7 +59,6 @@ class BettiNumberMetric():
         self.include_background = kwargs.get("include_background", False)
 
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
-        print(f"y_gt at start of betti number metric: {y[0]}")
         return self.betti_number_0_1(y_pred, y)
     
     def betti_number_0_1(self, y_pred: torch.Tensor, y: torch.Tensor):
@@ -75,15 +71,14 @@ class BettiNumberMetric():
             err_0 = 0.0
             err_1 = 0.0
             labels = self.extract_labels(y_pred_np[idx], y_np[idx])
-            print(f"found the following labels: {labels}")
             for label in labels:
                 b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], label)
                 err_0 += b0
                 err_1 += b1
 
             if len(labels) > 0:
-                    betti_errors_0[idx] = err_0 / len(labels)
-                    betti_errors_1[idx] = err_1 / len(labels)
+                betti_errors_0[idx] = err_0 / len(labels)
+                betti_errors_1[idx] = err_1 / len(labels)
             else:
                 betti_errors_0[idx] = 0.0
                 betti_errors_1[idx] = 0.0
