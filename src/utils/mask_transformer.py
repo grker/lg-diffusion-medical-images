@@ -101,10 +101,11 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
 
     def get_segmentation(self, logits: torch.Tensor):
         # Logits are of shape (reps, N, num_classes, H, W)
-        # Output is of shape ((N, 1, H, W), (N, C, H, W))
-        print(f"logits shape: {logits.shape}")
-        assert(logits.shape[2] == self.num_classes)
+        # Output is of shape (N, 1, H, W)
 
+        assert(logits.shape[2] == self.num_classes)
+        num_samples = logits.shape[1]
+        
         if self.ensemble_mode == "mean":
             logits = torch.mean(logits, dim=0)
             segmentation = torch.argmax(logits, dim=1, keepdim=True)
@@ -115,10 +116,8 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
             segmentations_across_reps = torch.argmax(logits, dim=2, keepdim=True).type(torch.int32)
             segmentation = torch.mode(segmentations_across_reps, dim=0)
 
-        print(f"segmentation shape: {segmentation.shape}")
-        assert(len(segmentation.shape) == 4)
+        assert(len(segmentation.shape) == 4 and segmentation.shape[0] == num_samples)
 
-        # return segmentation, torch.zeros_like(logits, device=logits.device).scatter_(1, segmentation, 1)
         return segmentation
     
     def gt_mapping_for_visualization(self):
@@ -193,7 +192,8 @@ class BinarySegMaskMapping(BaseMaskMapping):
     
     def get_segmentation(self, logits: torch.Tensor):
         # Logits are of shape (reps, N, 1, H, W)
-        # Output is of shape ((N, 1, H, W), (N, 2, H, W))
+        # Output is of shape (N, 1, H, W)
+        num_samples = logits.shape[1]
         if self.ensemble_mode == "mean":
             logits = torch.mean(logits, dim=0)
             segmentation = self.threshold_func(logits)
@@ -206,12 +206,9 @@ class BinarySegMaskMapping(BaseMaskMapping):
         else:
             raise ValueError(f"Ensemble mode {self.ensemble_mode} has not been implemented.")
         
-        print(f"segmentation shape: {segmentation.shape}")
-        assert(len(segmentation.shape) == 4)
+        assert(len(segmentation.shape) == 4 and segmentation.shape[0] == num_samples)
         
-        one_hot_shape = (segmentation.shape[0], 2, segmentation.shape[2], segmentation.shape[3])
-
-        return segmentation, torch.zeros(one_hot_shape, device=logits.device).scatter_(1, segmentation, 1)
+        return segmentation
         
     
     def gt_mapping_for_visualization(self):
