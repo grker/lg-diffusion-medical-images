@@ -18,7 +18,7 @@ from models.base_segmentation import create_segmentor
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="train_test",
+    config_name="segment",
 )
 def main(config: SegmentationConfig):
     # setup
@@ -40,6 +40,7 @@ def main(config: SegmentationConfig):
         wandb_tags = [
             config.project_name,
             config.dataset.name,
+            config.model.name,
             "multiclass" if config.dataset.mask_transformer.multiclass else "binary"
         ]
     else:
@@ -62,23 +63,26 @@ def main(config: SegmentationConfig):
     
     segmentor = create_segmentor(config)
     seg_model, train_loader, val_loader, test_loader = segmentor.initialize()
+
+    model_checkpoint = ModelCheckpoint(
+        monitor=config.trainer.argmax_metric,
+        filename="best_model_epoch_{epoch}",
+        mode=config.trainer.argmax_mode,
+        save_top_k=1,
+        save_last=True,
+        dirpath=logdir,
+    )
     
     print(f"Initialization done.")
-
-    # images = torch.randn(8, 3, 200, 200)
-    # images = torchvision.utils.make_grid(images, nrow=4, padding=10)
-
-    # wandb.log({"pics": wandb.Image(
-    #     images,
-    #     caption="test"
-    # )})
 
     if config.train:
         trainer = pl.Trainer(
             max_epochs=config.trainer.max_epochs,
             enable_progress_bar=True,
-            callbacks=[],
-            check_val_every_n_epoch=10,
+            callbacks=[
+                model_checkpoint
+            ],
+            check_val_every_n_epoch=config.validation_period,
             log_every_n_steps=1,
             enable_checkpointing=True,
             benchmark=True,
@@ -92,7 +96,10 @@ def main(config: SegmentationConfig):
         )
 
         trainer.fit(seg_model, train_loader, val_loader)
-        trainer.test(seg_model, test_loader)
+
+        best_model_path = model_checkpoint.best_model_path
+        print(f"Best model path: {best_model_path}")
+        trainer.test(seg_model, test_loader, ckpt_path="best", verbose=False)
 
 
 

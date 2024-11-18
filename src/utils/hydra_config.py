@@ -73,6 +73,8 @@ class TrainerConfig:
     max_epochs: int
     enable_progress_bar: bool
     accelerator: str
+    argmax_metric: str
+    argmax_mode: str # either max or min
 
 class UNetConfig(ModelConfig):
     image_size: tuple[int,int]
@@ -138,4 +140,5 @@ class SegmentationConfig:
     model_path: str
     wandb_tags: list[str]
     seed: int 
+    validation_period: int
 
