@@ -21,21 +21,19 @@ from models.base_segmentation import create_segmentor
     config_name="segment",
 )
 def main(config: SegmentationConfig):
-    # setup
-    logging.getLogger("pytorch_lightning").setLevel(
-        logging.INFO
-    )  # suppress excessive logs
 
-    if config.seed == -1:
+    logging.getLogger("pytorch_lightning").setLevel(logging.INFO)  # suppress excessive logs
+
+    if config.seed is None or config.seed == -1:
         config.seed = pl.seed_everything()
     else:
         pl.seed_everything(config.seed)
 
-    base_path = os.path.dirname(os.getcwd())
-    wandb_path = os.path.join(base_path, "wandb")
-    wandb.config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+    # wandb login and config
     wandb.login(key=os.environ["WANDB_API_KEY"])
+    wandb.config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
 
+    # wandb tags
     if config.wandb_tags is None:   
         wandb_tags = [
             config.project_name,
@@ -45,18 +43,31 @@ def main(config: SegmentationConfig):
         ]
     else:
         wandb_tags = config.wandb_tags
-      
-    wandb.init(
-        project="difseg", config=wandb.config, tags=wandb_tags, job_type="train", dir=wandb_path
-    )
-    wandb_logger = WandbLogger(log_model=True)
 
-    logdir = os.path.join(
-        base_path, "lightning_logs", config.project_name, wandb.run.id
+    # hydra output dir
+    base_path = os.path.dirname(os.getcwd())
+    print(f"base_path: {base_path}")
+    log_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    print(f"log_dir: {log_dir}")
+    os.makedirs(log_dir, exist_ok=True)
+
+    run = wandb.init(
+        project="difseg",
+        config=wandb.config,
+        tags=config.wandb_tags,
+        job_type="train",
+        dir=log_dir,
     )
-    print(f"logdir: {logdir}")
-    os.makedirs(logdir, exist_ok=True)
-    os.system(f"rm -r {logdir}/*")
+
+    wandb_logger = WandbLogger(log_model=True)
+    
+    # save config as artifact
+    wandb_run_dir = run.dir
+    print(f"wandb_run_dir: {wandb_run_dir}")
+    config_yaml = OmegaConf.to_yaml(config)
+    with open(os.path.join(wandb_run_dir, "config.yaml"), "w") as f:
+        f.write(config_yaml)
+
 
     print(f"Is cuda available: {torch.cuda.is_available()}")
     print(f"uses device: {torch.cuda.current_device()}")
@@ -70,7 +81,7 @@ def main(config: SegmentationConfig):
         mode=config.trainer.argmax_mode,
         save_top_k=1,
         save_last=True,
-        dirpath=logdir,
+        dirpath=log_dir,
     )
     
     print(f"Initialization done.")
@@ -86,7 +97,7 @@ def main(config: SegmentationConfig):
             log_every_n_steps=1,
             enable_checkpointing=True,
             benchmark=True,
-            default_root_dir=logdir,
+            default_root_dir=log_dir,
             gradient_clip_val=1.0,
             logger=wandb_logger,
             accelerator=config.trainer.accelerator,

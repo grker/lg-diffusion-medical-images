@@ -143,3 +143,12 @@ class SegmentationConfig:
     seed: int 
     validation_period: int
 
+class TestConfig:
+    wandb_username: str
+    wandb_project: str
+    run_id: str
+    repetitions: list[int]
+    seed: int
+    wandb_tags: list[str]
+
+
