@@ -42,6 +42,7 @@ class DiffusionConfig:
     device: str
     var_learned: bool
     repetitions: int
+    repetitions_test: int
     threshold: float
     prediction_type: str
     num_inference_steps: int

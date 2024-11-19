@@ -51,10 +51,8 @@ class DDPM(pl.LightningModule):
         self.threshold = diffusion_config.threshold
         self.prediction_type = diffusion_config.prediction_type
         self.mask_transformer = mask_transformer
+        self.repetitions_test = diffusion_config.repetitions_test
         self.num_classes = mask_transformer.get_num_classes()
-
-        # if hasattr(self.mask_transformer, "set_threshold_func"):
-        #     getattr(self.mask_transformer, "set_threshold_func")(self.threshold)
 
         self.loss_fn = loss
 
@@ -134,12 +132,13 @@ class DDPM(pl.LightningModule):
 
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
+        reps = self.repetitions_test if phase == "test" else self.repetitions
 
         print(f"memory allocated before ensemble mask computation: {torch.cuda.memory_allocated()}")
         
         with torch.no_grad():
             ensemble_mask = []
-            for reps in range(self.repetitions):
+            for rep in range(reps):
                 noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
                 for t in tqdm(self.scheduler.timesteps):
                     model_output = self.model(torch.cat((noisy_mask, images), dim=1), torch.full((num_samples,), t, device=images.device))

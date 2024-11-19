@@ -5,6 +5,7 @@ scheduler_type: squaredcos_cap_v2
 device: gpu
 var_learned: False
 repetitions: 1
+repetitions_test: 1
 threshold: 0.5
 prediction_type: sample
 num_inference_steps: null
