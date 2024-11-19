@@ -158,7 +158,7 @@ class DDPM(pl.LightningModule):
                 images, gt_masks, seg_mask, None, phase, 
                 self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes, [index]
             )
-            if self.repetitions > 1:
+            if reps > 1:
                 visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
             
         print(f"memory allocated after ensemble mask computation: {torch.cuda.memory_allocated()}")
