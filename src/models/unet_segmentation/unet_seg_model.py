@@ -17,6 +17,14 @@ class UnetSegmentation(BaseSegmentation):
     def __init__(self, config: SegmentationConfig):
         super().__init__(config)
 
+    def create_seg_model_args(self, mask_transformer: BaseMaskMapping, num_classes: int) -> dict:
+        return {
+            "mask_transformer": mask_transformer,
+            "model": self.create_model(),
+            "metrics": self.create_metrics_fn(num_classes),
+            "loss_fn": self.create_loss(),
+        }
+
     def create_segmentation_model(self, mask_transformer: BaseMaskMapping, num_classes: int) -> pl.LightningModule:
         model = self.create_model()
         metrics = self.create_metrics_fn(num_classes)
@@ -36,7 +44,7 @@ class UnetSegmentation(BaseSegmentation):
         
         return BasicUNet(**unet_config)
     
-    def initialize(self):
+    def initialize(self, test: bool=False):
         dataset, dataloader = self.create_dataset_dataloader()
         train_loader, val_loader, test_loader = dataloader
 
@@ -49,8 +57,17 @@ class UnetSegmentation(BaseSegmentation):
         
         with open_dict(self.config.model):
             self.config.model.out_channels = output_channels
-        
-        return self.create_segmentation_model(mask_transformer, num_classes), train_loader, val_loader, test_loader
+
+        model_args = self.create_seg_model_args(mask_transformer, num_classes)
+
+        if test:
+            return self.lightning_module(), test_loader, model_args
+        else:
+            return self.create_segmentation_model(**model_args), train_loader, val_loader, test_loader
+    
+
+    def lightning_module(self):
+        return UnetSegmentationModel
 
 
 

@@ -15,7 +15,7 @@ from models.base_segmentation import create_segmentor
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="test_ensemble",
+    config_name="ensemble_test",
 )
 def main(config: TestConfig):
 
@@ -55,41 +55,40 @@ def main(config: TestConfig):
     # initialize wandb api
     api = Api()
 
-    # load run to test on
-    run = api.run(f"{config.wandb_username}/{config.wandb_project}/{config.run_id}")
-    config_file = run.file("config.yaml")
-    config_file.download(replace=True)
-    run.download(log_dir, replace=True)
+    # load run and its config
+    old_run = api.run(f"{config.wandb_username}/{config.wandb_project}/{config.run_id}")
+    old_config = OmegaConf.create(old_run.config)
 
-    with open(os.path.join(log_dir, "config.yaml"), "r") as file:
-        config = yaml.safe_load(file)
+    # initialize segmentor on test mode
+    segmentor = create_segmentor(old_config)
+    seg_model_class, test_loader, model_args = segmentor.initialize(test=True)
 
-    model_config = OmegaConf.create(config)
-    if isinstance(model_config, SegmentationConfig):
-        print("is segmentation config")
-    else:
-        print("is not segmentation config")
+    # load best model of the run
+    model_artifact = wandb.use_artifact(f"model-{config.run_id}:best", type="model")
+    model_artifact_dir = model_artifact.download()
+    checkpoint_path = os.path.join(model_artifact_dir, "model.ckpt")
+    seg_model = seg_model_class.load_from_checkpoint(checkpoint_path=checkpoint_path, **model_args)
 
-    segmentor = create_segmentor(model_config)
-    seg_model, train_loader, val_loader, test_loader = segmentor.initialize()
 
     trainer = pl.Trainer(
-            max_epochs=config.trainer.max_epochs,
             enable_progress_bar=True,
-            callbacks=[],
-            check_val_every_n_epoch=config.validation_period,
             log_every_n_steps=1,
             enable_checkpointing=True,
             benchmark=True,
             default_root_dir=log_dir,
             gradient_clip_val=1.0,
             logger=wandb_logger,
-            accelerator=config.trainer.accelerator,
+            accelerator=old_config.trainer.accelerator,
             devices=1,
-            num_sanity_val_steps=0,
-            val_check_interval=1.0
         )
-    
-    # TODO: load best model of the run
-        
-    trainer.test(seg_model, test_loader)
+
+    if hasattr(seg_model, "repetitions_test") and config.repetitions is not None:
+        for reps in config.repetitions:
+            seg_model.repetitions_test = reps
+            trainer.test(seg_model, test_loader)
+    else:
+        trainer.test(seg_model, test_loader)
+
+
+if __name__ == "__main__":
+    main()

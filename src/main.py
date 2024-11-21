@@ -68,7 +68,6 @@ def main(config: SegmentationConfig):
     with open(os.path.join(wandb_run_dir, "config.yaml"), "w") as f:
         f.write(config_yaml)
 
-
     print(f"Is cuda available: {torch.cuda.is_available()}")
     print(f"uses device: {torch.cuda.current_device()}")
     
@@ -77,7 +76,7 @@ def main(config: SegmentationConfig):
 
     model_checkpoint = ModelCheckpoint(
         monitor=config.trainer.argmax_metric,
-        filename="best_model_epoch_{epoch}",
+        filename="model_{epoch}",
         mode=config.trainer.argmax_mode,
         save_top_k=1,
         save_last=True,
