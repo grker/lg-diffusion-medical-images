@@ -29,6 +29,12 @@ class ACDCDataset(Dataset):
     mask_transformer: BaseMaskMapping
 
     def __init__(self, config: DatasetConfig):
+        print(f"data path: {config.data_path}")
+        
+        if config.data_path.startswith('../') and not os.path.exists(os.path.join(os.getcwd(), config.data_path)):
+            config.data_path = config.data_path[3:]
+            print(f"new data path: {config.data_path}")
+
         self.training_folder = os.path.join(config.data_path, 'training')
         self.testing_folder = os.path.join(config.data_path, 'testing')
 

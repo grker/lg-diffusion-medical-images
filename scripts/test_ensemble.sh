@@ -10,7 +10,7 @@
 
 USERNAME=$USER
 PROJECT_NAME=master_thesis
-DIRECTORY=/data/${USERNAME}/${PROJECT_NAME}/src
+DIRECTORY=/data/${USERNAME}/${PROJECT_NAME}
 MAMBA_ENVIRONMENT=master_thesis
 
 mkdir -p ${DIRECTORY}/jobs
@@ -68,8 +68,4 @@ cd ${DIRECTORY}
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-echo "Testing ensemble"
-
-python test_ensemble.py run_id=29bjivsr 'repetitions=[1, 5, 15, 50, 100]'
-
-echo "Done"
+python src/test_ensemble.py run_id=29bjivsr 'repetitions=[1, 5, 15, 50, 100]'

@@ -3,7 +3,7 @@ defaults:
   - _self_
 
 name: acdc
-data_path: ../data/ACDC/database
+data_path: data/ACDC/database
 image_size: [200, 200]
 normalize: True
 mode: bilinear

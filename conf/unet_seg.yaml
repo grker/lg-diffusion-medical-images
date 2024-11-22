@@ -19,7 +19,7 @@ seed: 42
 
 hydra:
   run:
-    dir: ../hydra_output/${project_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ./hydra_output/${project_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
   job_logging:
     formatters:
       simple:
@@ -33,6 +33,6 @@ hydra:
       file:
         class: logging.FileHandler
         formatter: simple
-        filename: ../hydra_output/${project_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}/train.log
+        filename: ./hydra_output/${project_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}/train.log
     root:
       handlers: [console, file]

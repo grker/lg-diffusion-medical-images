@@ -10,7 +10,7 @@
 
 USERNAME=$USER
 PROJECT_NAME=master_thesis
-DIRECTORY=/data/${USERNAME}/${PROJECT_NAME}/src
+DIRECTORY=/data/${USERNAME}/${PROJECT_NAME}
 MAMBA_ENVIRONMENT=master_thesis
 
 mkdir -p ${DIRECTORY}/jobs
@@ -68,5 +68,5 @@ cd ${DIRECTORY}
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-python main.py project_name=dmiise validation_period=10 trainer.max_epochs=300 dataloader.batch_size=64 dataloader.val_batch_size=128 diffusion=sample_diffusion dataset/mask_transformer=acdc_multi diffusion.repetitions=1 diffusion.repetitions_test=15 dataset.mask_transformer.train_switch=False dataset.mask_transformer.ensemble_mode=mean
+python src/main.py project_name=dmiise validation_period=1 trainer.max_epochs=2 dataloader.batch_size=64 dataloader.val_batch_size=128 diffusion=sample_diffusion dataset/mask_transformer=acdc_multi diffusion.repetitions=1 diffusion.repetitions_test=1 dataset.mask_transformer.train_switch=False dataset.mask_transformer.ensemble_mode=mean
 # python main.py trainer.max_epochs=100 dataloader.batch_size=64 dataloader.val_batch_size=64 dataset/mask_transformer=acdc_multi
