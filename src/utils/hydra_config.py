@@ -152,3 +152,9 @@ class TestConfig:
     wandb_tags: list[str]
 
 
+class PersistanceHomologyConfig:
+    num_classes: int
+    topo_features: dict
+    min_persistance: float
+    train_switch: bool
+

@@ -1,16 +1,39 @@
 import torch
 import gudhi
 
-import gudhi
-
+from utils.hydra_config import PersistanceHomologyConfig
 
 class PersistentHomologyLoss(torch.nn.Module):
-    def __init__(self, config: dict):
+    def __init__(self, config: PersistanceHomologyConfig):
         super(PersistentHomologyLoss, self).__init__()
-        self.config = config
+        self.num_classes = config["num_classes"]
+        self.topo_features = self.check_topofeatures(config["topo_features"], self.num_classes)
+        self.min_persistance = config["min_persistance"]
 
-        self.check_topofeatures(self.config["topo_features"], self.config["num_classes"])
+        self.train_switch = config["train_switch"]
 
+
+    def forward(self, x: torch.Tensor):
+        assert(len(x.shape) == 5, f"Tensor should be a 5 dimensional tensor (batch, classes, channels, height, width)")
+        assert(x.shape[1] != self.num_classes, f"Shape does not match. Tensor has size {x.shape[1]} in dimension 1, but is expected to have {self.num_classes}.")
+
+        x = x[:, 1:] #background can be ignored
+
+        if not self.train_switch:
+            x = torch.clamp(1 - x, 0.0, 1.0)
+
+        loss = 0.0
+        for class_idx in x.shape[1]:
+            cp = gudhi.CubicalComplex(top_dimensional_cells=class_idx)
+            persistence_list = cp.persistence()
+
+            loss += self.loss_per_dimension(persistence_list)
+
+        return loss
+            
+
+    def loss_per_dimension(pers_list: list):
+        pass
 
 
     def check_topofeatures(self, topo_features: dict, num_classes: int):
@@ -40,6 +63,6 @@ class PersistentHomologyLoss(torch.nn.Module):
                 raise ValueError(f"Topo feature for class {class_idx} does not contain homology dimension for class 0")
             
         
-                
+        return topo_features
                 
 
