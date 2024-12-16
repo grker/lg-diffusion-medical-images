@@ -1,1 +1,4 @@
 
+[submodule "src/betti"]
+	path = src/betti
+	url = git@github.com:nstucki/Betti-matching.git
