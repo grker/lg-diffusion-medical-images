@@ -50,7 +50,7 @@ def main(config: TestConfig):
         f.write(config_yaml)
 
     print(f"Is cuda available: {torch.cuda.is_available()}")
-    print(f"uses device: {torch.cuda.current_device()}")
+    # print(f"uses device: {torch.cuda.current_device()}")
 
     # initialize wandb api
     api = Api()
@@ -58,6 +58,11 @@ def main(config: TestConfig):
     # load run and its config
     old_run = api.run(f"{config.wandb_username}/{config.wandb_project}/{config.run_id}")
     old_config = OmegaConf.create(old_run.config)
+
+    if torch.cuda.is_available():
+        print(f"uses device: {torch.cuda.current_device()}")
+    else:
+        old_config.trainer.accelerator = "cpu"
 
     # initialize segmentor on test mode
     segmentor = create_segmentor(old_config)

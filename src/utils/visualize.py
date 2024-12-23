@@ -259,5 +259,51 @@ def visualize_mean_variance_binary(ensemble_mask: torch.Tensor, phase: str, batc
 
 
 
+def gif_over_timesteps(prediction: torch.Tensor, gt_mask_one_hot: torch.Tensor, save_path: str, mode: str="probs", time: int=200):
+    """
+        :param mask: tensor of shape (timesteps, reps, classes, H, W)
+        :param gt_mask: tensor of shape (classes, H, W)
+        :param save_path: str, path to save the gif
+        :param mode: str, mode of the gif, either "probs" or "argmax" or "probs_argmax"
+    """
 
-   
+    assert(len(prediction.shape) == 5)
+    assert(len(gt_mask_one_hot.shape) == 3)
+
+    prediction = torch.mean(prediction, dim=1)
+    prediction = torch.softmax(prediction, dim=1)
+
+    if mode == "argmax" or mode == "probs_argmax":
+        mask = torch.argmax(prediction, dim=1)
+        
+
+        if mode == "argmax":
+            prediction = mask
+
+        if mode == "probs_argmax":
+            mask_one_hot = torch.zeros_like(prediction).scatter_(1, mask, 1)
+            prediction = mask_one_hot * prediction
+    
+    frames = []
+    for timestep in range(prediction.shape[0]):
+        concat_mask = torch.cat([prediction[timestep], gt_mask_one_hot], dim=0).unsqueeze(1)
+        print(f"concat_mask shape: {concat_mask.shape}")
+        grid = torchvision.utils.make_grid(concat_mask, nrow=min(prediction.shape[1], 4), padding=10)
+
+        frame = grid.permute(1, 2, 0).numpy() * 255
+        frames.append(Image.fromarray(frame.astype(np.uint8)))
+
+    frames[0].save(
+        save_path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=time,  # Milliseconds per frame
+        loop=0
+    )
+        
+    
+        
+
+    # wandb.log({"gif_over_timesteps": wandb.Video(frames, caption=f"Gif over timesteps for mode {mode}")})
+
+
