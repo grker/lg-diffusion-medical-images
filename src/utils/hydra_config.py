@@ -6,9 +6,11 @@ class ModelConfig:
     name: str
     pass
 
+
 class ResNetConfig(ModelConfig):
     layers: list[int]
     starting_channels: int
+
 
 # class UNetConfig(ModelConfig):
 #     sample_layers: list[int]
@@ -16,12 +18,15 @@ class ResNetConfig(ModelConfig):
 #     starting_channels: int
 #     time_dim: int
 
+
 class TransformConfig:
     apply_to_mask: bool
     args: dict
 
+
 class PreprocessorConfig:
     transform_config: dict[str, TransformConfig]
+
 
 class MaskTransformerConfig(ModelConfig):
     mask_type: str
@@ -47,17 +52,18 @@ class DiffusionConfig:
     prediction_type: str
     num_inference_steps: int
     clip_range: int
-    
+
 
 class LDSegConfig:
     resnet: ResNetConfig
     diffusion: DiffusionConfig
     has_decoder: bool
 
+
 class DatasetConfig:
     name: str
     data_path: str
-    image_size: tuple[int,int]
+    image_size: tuple[int, int]
     normalize: bool
     mode: str
     mask_transformer: MaskTransformerConfig
@@ -70,15 +76,17 @@ class DataloaderConfig:
     train_ratio: float
     validation_ratio: float
 
+
 class TrainerConfig:
     max_epochs: int
     enable_progress_bar: bool
     accelerator: str
     argmax_metric: str
-    argmax_mode: str # either max or min
+    argmax_mode: str  # either max or min
+
 
 class UNetConfig(ModelConfig):
-    image_size: tuple[int,int]
+    image_size: tuple[int, int]
     in_channels: int
     model_channels: int
     out_channels: int
@@ -98,6 +106,7 @@ class UNetConfig(ModelConfig):
     resblock_updown: bool
     use_new_attention_order: bool
 
+
 class BasicUNetConfig(ModelConfig):
     spatial_dims: int
     in_channels: int
@@ -107,25 +116,31 @@ class BasicUNetConfig(ModelConfig):
     emb_channels: int
     time_start: int
 
+
 class Loss:
     scale: float
     args: dict
+
 
 class LossConfig:
     loss_fns_config: dict[str, Loss]
     log_loss_parts: bool
 
+
 class MetricsConfig:
     metric_fns_config: dict
+
 
 class SchedulerConfig:
     name: str
     args: dict
 
+
 class OptimizerConfig:
     lr: float
     weight_decay: float
     scheduler: SchedulerConfig
+
 
 class SegmentationConfig:
     project_name: str
@@ -140,8 +155,9 @@ class SegmentationConfig:
     train: bool
     model_path: str
     wandb_tags: list[str]
-    seed: int 
+    seed: int
     validation_period: int
+
 
 class TestConfig:
     wandb_username: str
@@ -158,3 +174,38 @@ class PersistanceHomologyConfig:
     min_persistance: float
     train_switch: bool
 
+
+class ScalingFunctionConfig:
+    pass
+
+
+class LikelihoodTempScalingConfig(ScalingFunctionConfig):
+    alpha: float
+
+
+class AnalysisConfig:
+    pass
+
+
+class Dim0_ThresholdAnalysisConfig(AnalysisConfig):
+    num_bins: int
+    poly_degree: int
+    minimal_threshold: float
+
+
+class PseudoGTConfig:
+    name: str
+    topo_features: dict
+    num_classes: int
+    scaling_function: ScalingFunctionConfig
+    analysis: AnalysisConfig
+
+
+class PseudoGTDim0_CompsConfig(PseudoGTConfig):
+    scaling_function: LikelihoodTempScalingConfig
+    analysis: Dim0_ThresholdAnalysisConfig
+
+
+class LossGuidedDiffusionConfig(DiffusionConfig):
+    pseudo_gt_generator: PseudoGTConfig
+    gamma: float
