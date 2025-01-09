@@ -1,7 +1,3 @@
-
-[submodule "src/betti"]
-	path = src/betti
-	url = git@github.com:nstucki/Betti-matching.git
 [submodule "src/betti_repo"]
 	path = src/betti_repo
 	url = git@github.com:grker/Betti-matching.git
