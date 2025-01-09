@@ -1,7 +1,7 @@
 import torch
 import omegaconf
 
-from betti.BettiMatching import CubicalPersistence
+from betti_repo.BettiMatching import CubicalPersistence
 from utils.hydra_config import PseudoGTConfig, PseudoGTDim0_CompsConfig
 
 
