@@ -1,8 +1,0 @@
-wandb_username: difseg
-wandb_project: difseg
-run_id: 29bjivsr
-repetitions:
-- 1
-seed: 42
-wandb_tags:
-- ensemble

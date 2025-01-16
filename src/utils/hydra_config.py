@@ -57,7 +57,7 @@ class DiffusionConfig:
     prediction_type: str
     num_inference_steps: int
     clip_range: int
-    pseudo_gt_generator: PseudoGTConfig
+
 
 class LDSegConfig:
     resnet: ResNetConfig
@@ -173,6 +173,9 @@ class TestConfig:
     wandb_tags: list[str]
 
 
+
+
+
 class ScalingFunctionConfig:
     pass
 
@@ -207,4 +210,3 @@ class PseudoGTDim0_CompsConfig(PseudoGTConfig):
 class LossGuidedDiffusionConfig(DiffusionConfig):
     pseudo_gt_generator: PseudoGTConfig
     gamma: float
-    starting_step: int
