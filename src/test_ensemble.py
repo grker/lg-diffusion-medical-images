@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 from utils.hydra_config import TestConfig, SegmentationConfig
 from models.base_segmentation import create_segmentor
 
+
 @hydra.main(
     version_base=None,
     config_path="../conf",
@@ -19,7 +20,9 @@ from models.base_segmentation import create_segmentor
 )
 def main(config: TestConfig):
 
-    logging.getLogger("pytorch_lightning").setLevel(logging.INFO)  # suppress excessive logs
+    logging.getLogger("pytorch_lightning").setLevel(
+        logging.INFO
+    )  # suppress excessive logs
 
     if config.seed is None or config.seed == -1:
         config.seed = pl.seed_everything()
@@ -72,20 +75,21 @@ def main(config: TestConfig):
     model_artifact = wandb.use_artifact(f"model-{config.run_id}:best", type="model")
     model_artifact_dir = model_artifact.download()
     checkpoint_path = os.path.join(model_artifact_dir, "model.ckpt")
-    seg_model = seg_model_class.load_from_checkpoint(checkpoint_path=checkpoint_path, **model_args)
-
+    seg_model = seg_model_class.load_from_checkpoint(
+        checkpoint_path=checkpoint_path, **model_args
+    )
 
     trainer = pl.Trainer(
-            enable_progress_bar=True,
-            log_every_n_steps=1,
-            enable_checkpointing=True,
-            benchmark=True,
-            default_root_dir=log_dir,
-            gradient_clip_val=1.0,
-            logger=wandb_logger,
-            accelerator=old_config.trainer.accelerator,
-            devices=1,
-        )
+        enable_progress_bar=True,
+        log_every_n_steps=1,
+        enable_checkpointing=True,
+        benchmark=True,
+        default_root_dir=log_dir,
+        gradient_clip_val=1.0,
+        logger=wandb_logger,
+        accelerator=old_config.trainer.accelerator,
+        devices=1,
+    )
 
     if hasattr(seg_model, "repetitions_test") and config.repetitions is not None:
         for reps in config.repetitions:

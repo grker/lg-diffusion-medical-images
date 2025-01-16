@@ -56,8 +56,7 @@ class DDPM(pl.LightningModule):
     ):
         super().__init__()
 
-        diffusion_config.noise_steps = 20
-        self.create_gif_over_timesteps = True
+        self.create_gif_over_timesteps = False
         self.scheduler = DDPMScheduler(
             num_train_timesteps=diffusion_config.noise_steps,
             beta_start=diffusion_config.beta_start,
@@ -194,9 +193,11 @@ class DDPM(pl.LightningModule):
                         torch.cat((noisy_mask, images), dim=1),
                         torch.full((num_samples,), t, device=images.device),
                     )
+
                     noisy_mask = self.scheduler.step(
                         model_output=model_output, timestep=t, sample=noisy_mask
                     ).prev_sample
+
                     if self.create_gif_over_timesteps:
                         prediction_for_gif[t, rep] = noisy_mask[random_idx]
                 ensemble_mask.append(noisy_mask.detach().cpu())
@@ -205,7 +206,7 @@ class DDPM(pl.LightningModule):
                 gif_over_timesteps(
                     torch.flip(prediction_for_gif, dims=[0]),
                     gt_train_masks[random_idx],
-                    f"./results/gif_over_timesteps_{random_idx}.gif",
+                    f"./results/gif_over_timesteps_output_{random_idx}.gif",
                     mode="probs",
                     time=500,
                 )

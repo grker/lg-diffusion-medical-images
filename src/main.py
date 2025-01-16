@@ -22,7 +22,9 @@ from models.base_segmentation import create_segmentor
 )
 def main(config: SegmentationConfig):
 
-    logging.getLogger("pytorch_lightning").setLevel(logging.INFO)  # suppress excessive logs
+    logging.getLogger("pytorch_lightning").setLevel(
+        logging.INFO
+    )  # suppress excessive logs
 
     if config.seed is None or config.seed == -1:
         config.seed = pl.seed_everything()
@@ -34,12 +36,12 @@ def main(config: SegmentationConfig):
     wandb.config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
 
     # wandb tags
-    if config.wandb_tags is None:   
+    if config.wandb_tags is None:
         wandb_tags = [
             config.project_name,
             config.dataset.name,
             config.model.name,
-            "multiclass" if config.dataset.mask_transformer.multiclass else "binary"
+            "multiclass" if config.dataset.mask_transformer.multiclass else "binary",
         ]
     else:
         wandb_tags = config.wandb_tags
@@ -60,7 +62,7 @@ def main(config: SegmentationConfig):
     )
 
     wandb_logger = WandbLogger(log_model=True)
-    
+
     # save config as artifact
     wandb_run_dir = run.dir
     print(f"wandb_run_dir: {wandb_run_dir}")
@@ -70,7 +72,7 @@ def main(config: SegmentationConfig):
 
     print(f"Is cuda available: {torch.cuda.is_available()}")
     print(f"uses device: {torch.cuda.current_device()}")
-    
+
     segmentor = create_segmentor(config)
     seg_model, train_loader, val_loader, test_loader = segmentor.initialize()
 
@@ -82,16 +84,14 @@ def main(config: SegmentationConfig):
         save_last=True,
         dirpath=log_dir,
     )
-    
+
     print(f"Initialization done.")
 
     if config.train:
         trainer = pl.Trainer(
             max_epochs=config.trainer.max_epochs,
             enable_progress_bar=True,
-            callbacks=[
-                model_checkpoint
-            ],
+            callbacks=[model_checkpoint],
             check_val_every_n_epoch=config.validation_period,
             log_every_n_steps=1,
             enable_checkpointing=True,
@@ -102,7 +102,7 @@ def main(config: SegmentationConfig):
             accelerator=config.trainer.accelerator,
             devices=1,
             num_sanity_val_steps=0,
-            val_check_interval=1.0
+            val_check_interval=1.0,
         )
 
         trainer.fit(seg_model, train_loader, val_loader)
@@ -110,7 +110,6 @@ def main(config: SegmentationConfig):
         best_model_path = model_checkpoint.best_model_path
         print(f"Best model path: {best_model_path}")
         trainer.test(seg_model, test_loader, ckpt_path="best", verbose=False)
-
 
 
 if __name__ == "__main__":
