@@ -17,23 +17,50 @@ class PersistentHomologyLoss(torch.nn.Module):
         assert(len(x.shape) == 5, f"Tensor should be a 5 dimensional tensor (batch, classes, channels, height, width)")
         assert(x.shape[1] != self.num_classes, f"Shape does not match. Tensor has size {x.shape[1]} in dimension 1, but is expected to have {self.num_classes}.")
 
-        x = x[:, 1:] #background can be ignored
-
+        x = x.squeeze(0)
         if not self.train_switch:
             x = torch.clamp(1 - x, 0.0, 1.0)
 
         loss = 0.0
-        for class_idx in x.shape[1]:
-            cp = gudhi.CubicalComplex(top_dimensional_cells=class_idx)
-            persistence_list = cp.persistence()
+        print(f"x shape in topo loss: {x.shape}")
+        for batch_idx in range(x.shape[0]):
+            for class_idx in range(x.shape[1]-1): #background can be ignored
+                cp = gudhi.CubicalComplex(top_dimensional_cells=x[:, class_idx+1, :, :])
+                persistence_list = cp.persistence()
 
-            loss += self.loss_per_dimension(persistence_list)
+                print(f"Persistence list: {persistence_list}")
 
-        return loss
+                loss += self.loss_per_dimension([feature[1] for feature in persistence_list if feature[0] == 0], self.topo_features[class_idx+1][0]) #homology dimension 0
+                loss += self.loss_per_dimension([feature[1] for feature in persistence_list if feature[0] == 1], self.topo_features[class_idx+1][1]) #homology dimension 1
+
+        return loss / x.shape[0]
             
 
-    def loss_per_dimension(pers_list: list):
-        pass
+    def loss_per_dimension(self, pers_list: list, num_features: int):
+        
+        def persistence(birth_death_pair: tuple[int, int]):
+            if birth_death_pair[1] > 1:
+                return 1 - birth_death_pair[0]
+            return birth_death_pair[1] - birth_death_pair[0]
+        
+        list_length = len(pers_list)
+        loss = 0.0
+
+        for i in range(num_features):
+            if i < list_length:
+                loss += (1 - persistence(pers_list[i])) ** 2
+            else:
+                loss += 1
+
+        rest = num_features
+        while rest < list_length:
+            loss += persistence(pers_list[rest]) ** 2
+            rest += 1
+
+        print(f"Loss: {loss}")
+        
+        return loss
+        
 
 
     def check_topofeatures(self, topo_features: dict, num_classes: int):

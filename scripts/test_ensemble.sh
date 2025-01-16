@@ -68,4 +68,4 @@ cd ${DIRECTORY}
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-python src/test_ensemble.py run_id=29bjivsr 'repetitions=[1, 5, 15, 50, 100]'
+python src/test_ensemble.py run_id=29bjivsr 'repetitions=[1]'

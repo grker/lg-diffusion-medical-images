@@ -216,7 +216,10 @@ class DDPM(pl.LightningModule):
             gt_masks = gt_masks.to(device=seg_mask.device)
 
             # Detach before passing for metric computation
-            compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+            if phase == "test":
+                compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log, x_axis_name="repetition", x_axis_value=reps)
+            else:
+                compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
 
             # Visualization
             index = random.randint(0, num_samples - 1)

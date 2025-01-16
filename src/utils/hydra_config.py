@@ -18,6 +18,11 @@ class ResNetConfig(ModelConfig):
 #     starting_channels: int
 #     time_dim: int
 
+class PersistanceHomologyConfig:
+    num_classes: int
+    topo_features: dict
+    min_persistance: float
+    train_switch: bool
 
 class TransformConfig:
     apply_to_mask: bool
@@ -168,11 +173,7 @@ class TestConfig:
     wandb_tags: list[str]
 
 
-class PersistanceHomologyConfig:
-    num_classes: int
-    topo_features: dict
-    min_persistance: float
-    train_switch: bool
+
 
 
 class ScalingFunctionConfig:
