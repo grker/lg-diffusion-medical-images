@@ -1,0 +1,18 @@
+defaults:
+  - pseudo_gt_generator: base_generator
+  - _self_
+
+noise_steps: 100
+beta_start: 1e-4
+beta_end: 0.02
+scheduler_type: squaredcos_cap_v2
+device: gpu
+var_learned: False
+repetitions: 1
+repetitions_test: 1
+threshold: 0.5
+prediction_type: sample
+num_inference_steps: null
+clip_range: 1
+gamma: 0.1
+starting_step: 10

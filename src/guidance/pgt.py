@@ -81,7 +81,7 @@ def temperature_scaling(x_softmax: torch.Tensor, temperature: float=0.2):
 
 def likelyhood_temperature_scaling(x_softmax: torch.Tensor, likelyhood: torch.Tensor, alpha: float=1.0):
     """
-        Likelihood temperature scaling of the softmax output. 
+        likelyhood temperature scaling of the softmax output. 
         params:
             x_softmax: torch.Tensor, shape (batch_size, num_classes, height, width)
             likelyhood: torch.Tensor, shape (batch_size, num_classes, height, width)
@@ -213,21 +213,21 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
         """
 
         device = x_softmax.device
-        likelihood = torch.zeros_like(x_softmax, device=device)
+        likelyhood = torch.zeros_like(x_softmax, device=device)
         for sample_idx in range(x_softmax.shape[0]):
             for class_idx in range(self.num_classes):
                 topo_feature_0 = self.topo_features[class_idx][0]
-                likelihood[sample_idx, class_idx] = self.likelihood_map(x_softmax[sample_idx, class_idx], topo_feature_0)
+                likelyhood[sample_idx, class_idx] = self.likelyhood_map(x_softmax[sample_idx, class_idx], topo_feature_0)
 
         if no_scaling:
-            return likelihood
+            return likelyhood
         else:
-            return self.scaling_function(x_softmax, likelihood)
+            return self.scaling_function(x_softmax, likelyhood)
 
 
-    def likelihood_map(self, class_probs: torch.Tensor, num_components: int):
+    def likelyhood_map(self, class_probs: torch.Tensor, num_components: int):
         """
-            Generate a likelihood map for the given softmax output.
+            Generate a likelyhood map for the given softmax output.
             params:
                 x_softmax: torch.Tensor, shape (height, width)
             returns:
@@ -235,16 +235,16 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
         """
 
         device = class_probs.device
-        likelihood = torch.zeros_like(class_probs, device=device)
+        likelyhood = torch.zeros_like(class_probs, device=device)
         cp = CubicalPersistence(class_probs.cpu(), relative=False, reduced=False, filtration='superlevel', construction='V', birth_UF=True)
         intervals_and_threshold = cp.threshold_analysis_dim0_components(num_components=num_components, num_bins=self.analysis.num_bins, degree=self.analysis.poly_degree, minimal_threshold=self.analysis.minimal_threshold)
         
         for interval, threshold in intervals_and_threshold:
             print(f"using interval: {interval}, threshold: {threshold} for copmonent map")
             component_map = cp.component_map(threshold, interval[0], base_prob=0.0, device=device)
-            likelihood = torch.max(likelihood, component_map)
+            likelyhood = torch.max(likelyhood, component_map)
 
-        return likelihood
+        return likelyhood
         
         
 
