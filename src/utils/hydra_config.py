@@ -210,3 +210,4 @@ class PseudoGTDim0_CompsConfig(PseudoGTConfig):
 class LossGuidedDiffusionConfig(DiffusionConfig):
     pseudo_gt_generator: PseudoGTConfig
     gamma: float
+    starting_step: int

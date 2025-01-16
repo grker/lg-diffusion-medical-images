@@ -360,7 +360,7 @@ class DDPM_DPS(DDPM):
         self.topology_loss = nn.CrossEntropyLoss()
 
     def initialize_pgt(self, pseudo_gt_generator_config: PseudoGTConfig):
-        if pseudo_gt_generator_config.analysis.name == "dim0_threshold_analysis":
+        if pseudo_gt_generator_config.name == "dim0_threshold_analysis":
             from guidance.pgt import PseudoGTGeneratorDim0_Comps
 
             self.pgt = PseudoGTGeneratorDim0_Comps(pseudo_gt_generator_config)
@@ -385,18 +385,25 @@ class DDPM_DPS(DDPM):
                     torch.full((num_samples,), t, device=images.device),
                 )
 
-                pseudo_gt = self.pgt.pseudo_gt(noisy_mask)
-                loss = self.topology_loss(model_output, pseudo_gt)
-                loss.backward()
+                if t < self.starting_step:
+                    pseudo_gt = self.pgt.pseudo_gt(noisy_mask)
+                    loss = self.topology_loss(model_output, pseudo_gt)
+                    loss.backward()
 
-                noisy_mask_grads = noisy_mask.grad
+                    noisy_mask_grads = noisy_mask.grad
 
-                noisy_mask = (
-                    self.scheduler.step(
-                        model_output=model_output, timestep=t, sample=noisy_mask
-                    ).prev_sample
-                    - self.gamma * noisy_mask_grads
-                )
+                    noisy_mask = (
+                        self.scheduler.step(
+                            model_output=model_output, timestep=t, sample=noisy_mask
+                        ).prev_sample
+                        - self.gamma * noisy_mask_grads
+                    )
+                else:
+                    noisy_mask = (
+                        self.scheduler.step(
+                            model_output=model_output, timestep=t, sample=noisy_mask
+                        ).prev_sample
+                    )
 
             ensemble_mask.append(noisy_mask.detach().cpu())
 
