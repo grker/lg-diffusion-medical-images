@@ -1,3 +1,0 @@
-[submodule "src/betti_repo"]
-	path = src/betti_repo
-	url = git@github.com:grker/Betti-matching.git
