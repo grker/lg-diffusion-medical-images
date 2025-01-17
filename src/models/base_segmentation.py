@@ -12,11 +12,11 @@ from utils.hydra_config import DatasetConfig, DataloaderConfig, UNetConfig, Diff
 from utils.loss import CustomLoss
 
 
-def create_segmentor(config: SegmentationConfig):
+def create_segmentor(config: SegmentationConfig, **kwargs: dict):
     project_name = config.project_name
     if project_name == 'dmiise':
         from models.dmiise.dmiise_model import DmiiseSegmentation
-        return DmiiseSegmentation(config)
+        return DmiiseSegmentation(config, **kwargs)
     elif project_name == 'unet_seg':
         from models.unet_segmentation.unet_seg_model import UnetSegmentation
         return UnetSegmentation(config)

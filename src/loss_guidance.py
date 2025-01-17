@@ -9,16 +9,16 @@ from pytorch_lightning.loggers import WandbLogger
 from wandb import Api
 from omegaconf import OmegaConf
 
-from utils.hydra_config import SegmentationConfig, EnsembleConfig
+from utils.hydra_config import LossGuidanceInferenceConfig
 from models.base_segmentation import create_segmentor
 
 
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="ensemble_test",
+    config_name="loss_guidance",
 )
-def main(config: EnsembleConfig):
+def main(config: LossGuidanceInferenceConfig):
 
     logging.getLogger("pytorch_lightning").setLevel(
         logging.INFO
@@ -62,22 +62,37 @@ def main(config: EnsembleConfig):
     old_run = api.run(f"{config.wandb_username}/{config.wandb_project}/{config.run_id}")
     old_config = OmegaConf.create(old_run.config)
 
+    if old_config.project_name == "unet_seg":
+        raise ValueError(
+            "Loss guidance is not supported for UNet segmentation. Please specify a trained model with the project name 'dmiise'."
+        )
+    
+    # add the loss guidance config to the diffusion config
+    old_config.diffusion.loss_guidance = config.loss_guidance_diffusion
+
     if torch.cuda.is_available():
-        print(f"uses device: {torch.cuda.current_device()}")
+        print(f"cuda available, using device: {torch.cuda.current_device()}")
     else:
+        print("cuda not available, using cpu")
         old_config.trainer.accelerator = "cpu"
 
     # initialize segmentor on test mode
-    segmentor = create_segmentor(old_config)
-    seg_model_class, test_loader, model_args = segmentor.initialize(test=True)
+
+    segmentor = create_segmentor(old_config, True)
+    seg_model, test_loader, model_args = segmentor.initialize(test=False)
 
     # load best model of the run
     model_artifact = wandb.use_artifact(f"model-{config.run_id}:best", type="model")
     model_artifact_dir = model_artifact.download()
-    checkpoint_path = os.path.join(model_artifact_dir, "model.ckpt")
-    seg_model = seg_model_class.load_from_checkpoint(
-        checkpoint_path=checkpoint_path, **model_args
-    )
+
+    state_dict = torch.load(
+        os.path.join(model_artifact_dir, "model.ckpt"),
+        map_location=old_config.trainer.accelerator,
+        weights_only=False,
+    )["state_dict"]
+
+    state_dict = {k: v for k, v in state_dict.items() if "loss_fn" not in k}
+    seg_model.load_state_dict(state_dict)
 
     trainer = pl.Trainer(
         enable_progress_bar=True,
@@ -91,12 +106,7 @@ def main(config: EnsembleConfig):
         devices=1,
     )
 
-    if hasattr(seg_model, "repetitions_test") and config.repetitions is not None:
-        for reps in config.repetitions:
-            seg_model.repetitions_test = reps
-            trainer.test(seg_model, test_loader)
-    else:
-        trainer.test(seg_model, test_loader)
+    trainer.test(seg_model, test_loader)
 
 
 if __name__ == "__main__":

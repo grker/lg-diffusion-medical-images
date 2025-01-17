@@ -354,9 +354,10 @@ class DDPM_DPS(DDPM):
         super().__init__(
             model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
         )
-
-        self.gamma = diffusion_config.gamma
-        self.pgt = self.initialize_pgt(diffusion_config.pseudo_gt_generator)
+        
+        self.starting_step = diffusion_config.loss_guidance.starting_step
+        self.gamma = diffusion_config.loss_guidance.gamma
+        self.pgt = self.initialize_pgt(diffusion_config.loss_guidance.pseudo_gt_generator)
         self.topology_loss = nn.CrossEntropyLoss()
 
     def initialize_pgt(self, pseudo_gt_generator_config: PseudoGTConfig):

@@ -1,0 +1,6 @@
+defaults:
+  - loss_guidance: loss_guidance_base
+  - _self_
+
+gamma: 0.1
+starting_step: 10

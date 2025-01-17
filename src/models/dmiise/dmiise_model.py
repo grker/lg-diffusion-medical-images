@@ -8,12 +8,13 @@ from omegaconf import open_dict
 from utils.mask_transformer import BaseMaskMapping
 from utils.hydra_config import SegmentationConfig
 from models.base_segmentation import BaseSegmentation
-from models.dmiise.diffusion import DDPM
+from models.dmiise.diffusion import DDPM, DDPM_DPS
 
 
 class DmiiseSegmentation(BaseSegmentation):
-    def __init__(self, config: SegmentationConfig):
+    def __init__(self, config: SegmentationConfig, loss_guided: bool=False):
         super().__init__(config)
+        self.loss_guided = loss_guided
 
     def create_segmentation_model(self, mask_transformer: BaseMaskMapping, num_classes: int) -> pl.LightningModule:
         from modules.unet import UNetModel
@@ -28,6 +29,11 @@ class DmiiseSegmentation(BaseSegmentation):
         
         metrics = self.create_metrics_fn(num_classes)
         loss = self.create_loss()
+        if self.loss_guided:
+            if hasattr(self.config.diffusion, "loss_guidance"):
+                return DDPM_DPS(model, self.config.diffusion, self.config.optimizer, metrics, mask_transformer, loss)
+            else:
+                raise ValueError("No loss_guidance config has been specified!")
         return DDPM(model, self.config.diffusion, self.config.optimizer, metrics, mask_transformer, loss)
     
 

@@ -149,35 +149,9 @@ class OptimizerConfig:
     scheduler: SchedulerConfig
 
 
-class SegmentationConfig:
-    project_name: str
-    dataset: DatasetConfig
-    dataloader: DataloaderConfig
-    model: ModelConfig
-    diffusion: DiffusionConfig
-    trainer: TrainerConfig
-    metrics: MetricsConfig
-    loss: LossConfig
-    optimizer: OptimizerConfig
-    train: bool
-    model_path: str
-    wandb_tags: list[str]
-    seed: int
-    validation_period: int
-
-
-class TestConfig:
-    wandb_username: str
-    wandb_project: str
-    run_id: str
-    repetitions: list[int]
-    seed: int
-    wandb_tags: list[str]
-
-
+# Configs for the loss guidance
 class ScalingFunctionConfig:
     pass
-
 
 class LikelihoodTempScalingConfig(ScalingFunctionConfig):
     alpha: float
@@ -206,7 +180,53 @@ class PseudoGTDim0_CompsConfig(PseudoGTConfig):
     analysis: Dim0_ThresholdAnalysisConfig
 
 
-class LossGuidedDiffusionConfig(DiffusionConfig):
-    pseudo_gt_generator: PseudoGTConfig
+class LossGuidanceConfig():
     gamma: float
     starting_step: int
+    pseudo_gt_generator: PseudoGTConfig
+
+
+class LossGuidedDiffusionConfig(DiffusionConfig):
+    loss_guidance: LossGuidanceConfig
+
+
+# Main Configs (configs passed to main functions)
+# ---------------------------------------------
+
+# Segmentation Config (trains and tests a segmentation model):
+class SegmentationConfig:
+    project_name: str
+    dataset: DatasetConfig
+    dataloader: DataloaderConfig
+    model: ModelConfig
+    diffusion: DiffusionConfig
+    trainer: TrainerConfig
+    metrics: MetricsConfig
+    loss: LossConfig
+    optimizer: OptimizerConfig
+    train: bool
+    model_path: str
+    wandb_tags: list[str]
+    seed: int
+    validation_period: int
+
+
+# Config for the loss guidance inference with a trained model
+class LossGuidanceInferenceConfig():
+    wandb_username: str
+    wandb_project: str
+    run_id: str
+    seed: int
+    wandb_tags: list[str]
+    loss_guidance: LossGuidanceConfig
+
+
+# Ensemble Config (tests an ensemble of a trained model):
+class EnsembleConfig:
+    wandb_username: str
+    wandb_project: str
+    run_id: str
+    repetitions: list[int]
+    seed: int
+    wandb_tags: list[str]
+
