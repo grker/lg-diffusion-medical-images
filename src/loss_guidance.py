@@ -68,7 +68,7 @@ def main(config: LossGuidanceInferenceConfig):
         )
     
     # add the loss guidance config to the diffusion config
-    old_config.diffusion.loss_guidance = config.loss_guidance_diffusion
+    old_config.diffusion.loss_guidance = config.loss_guidance
 
     if torch.cuda.is_available():
         print(f"cuda available, using device: {torch.cuda.current_device()}")
@@ -78,21 +78,32 @@ def main(config: LossGuidanceInferenceConfig):
 
     # initialize segmentor on test mode
 
-    segmentor = create_segmentor(old_config, True)
-    seg_model, test_loader, model_args = segmentor.initialize(test=False)
+    # segmentor = create_segmentor(old_config, loss_guided=True)
+    # seg_model, train_loader, val_loader, test_loader = segmentor.initialize(test=False)
+
+    # # load best model of the run
+    # model_artifact = wandb.use_artifact(f"model-{config.run_id}:best", type="model")
+    # model_artifact_dir = model_artifact.download()
+
+    # state_dict = torch.load(
+    #     os.path.join(model_artifact_dir, "model.ckpt"),
+    #     map_location=old_config.trainer.accelerator,
+    #     weights_only=False,
+    # )["state_dict"]
+
+    # state_dict = {k: v for k, v in state_dict.items() if "loss_fn" not in k}
+    # seg_model.load_state_dict(state_dict)
+
+    segmentor = create_segmentor(old_config, loss_guided=True)
+    seg_model_class, test_loader, model_args = segmentor.initialize(test=True)
 
     # load best model of the run
     model_artifact = wandb.use_artifact(f"model-{config.run_id}:best", type="model")
     model_artifact_dir = model_artifact.download()
-
-    state_dict = torch.load(
-        os.path.join(model_artifact_dir, "model.ckpt"),
-        map_location=old_config.trainer.accelerator,
-        weights_only=False,
-    )["state_dict"]
-
-    state_dict = {k: v for k, v in state_dict.items() if "loss_fn" not in k}
-    seg_model.load_state_dict(state_dict)
+    checkpoint_path = os.path.join(model_artifact_dir, "model.ckpt")
+    seg_model = seg_model_class.load_from_checkpoint(
+        checkpoint_path=checkpoint_path, **model_args
+    )
 
     trainer = pl.Trainer(
         enable_progress_bar=True,

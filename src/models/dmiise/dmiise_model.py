@@ -93,6 +93,9 @@ class DmiiseSegmentation(BaseSegmentation):
             return self.lightning_module()(**model_args), train_loader, val_loader, test_loader
     
     def lightning_module(self):
-        return DDPM
+        if self.loss_guided:
+            return DDPM_DPS
+        else:
+            return DDPM
     
     

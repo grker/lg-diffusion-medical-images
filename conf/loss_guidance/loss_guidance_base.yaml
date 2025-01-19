@@ -1,5 +1,5 @@
 defaults:
-  - loss_guidance: loss_guidance_base
+  - pseudo_gt_generator: pseudo_gt_dim0
   - _self_
 
 gamma: 0.1

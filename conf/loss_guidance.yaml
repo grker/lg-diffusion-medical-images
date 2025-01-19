@@ -1,3 +1,6 @@
+defaults:
+  - loss_guidance: loss_guidance_base 
+
 wandb_username: difseg
 wandb_project: difseg
 run_id: 123456
