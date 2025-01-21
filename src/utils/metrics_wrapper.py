@@ -15,20 +15,24 @@ class DiceMetric(monai.metrics.DiceMetric):
 
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
         return super().__call__(y_pred, y)
-    
+
 
 class HausdorffDistanceMetric2(monai.metrics.HausdorffDistanceMetric):
-    num_classes: int=None
+    num_classes: int = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
-        
-        def one_hot_encode(tensor: torch.Tensor, one_hot_shape: tuple[int, int, int, int]):
+
+        def one_hot_encode(
+            tensor: torch.Tensor, one_hot_shape: tuple[int, int, int, int]
+        ):
             with torch.no_grad():
                 tensor = tensor.type(torch.int64)
-                one_hot_tensor = torch.zeros(one_hot_shape, device=tensor.device).scatter_(1, tensor, 1)
+                one_hot_tensor = torch.zeros(
+                    one_hot_shape, device=tensor.device
+                ).scatter_(1, tensor, 1)
             return one_hot_tensor
 
         if self.num_classes is None:
@@ -36,8 +40,13 @@ class HausdorffDistanceMetric2(monai.metrics.HausdorffDistanceMetric):
             self.num_classes = 2
 
         num_samples = y_pred.shape[0]
-        
-        one_hot_shape = (y_pred.shape[0], self.num_classes, y_pred.shape[2], y_pred.shape[3])
+
+        one_hot_shape = (
+            y_pred.shape[0],
+            self.num_classes,
+            y_pred.shape[2],
+            y_pred.shape[3],
+        )
         y_pred = one_hot_encode(y_pred, one_hot_shape)
         y = one_hot_encode(y, one_hot_shape)
 
@@ -46,15 +55,15 @@ class HausdorffDistanceMetric2(monai.metrics.HausdorffDistanceMetric):
             mean = torch.mean(hd_per_class, dim=1, keepdim=True)
             return mean
         else:
-            return hd_per_class    
+            return hd_per_class
         # return torch.zeros(num_samples, device="cpu")
 
 
-class BettiNumberMetric():
+class BettiNumberMetric:
     connectivity: int
     num_classes: int
     include_background: bool
-    background_label: int=0 # background label has to be 0!
+    background_label: int = 0  # background label has to be 0!
     logging_names: list[str] = ["betti_number_0", "betti_number_1"]
 
     def __init__(self, **kwargs):
@@ -64,13 +73,13 @@ class BettiNumberMetric():
 
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
         return self.betti_number_0_1(y_pred, y)
-    
+
     def betti_number_0_1(self, y_pred: torch.Tensor, y: torch.Tensor):
         y_pred_np = y_pred.detach().cpu().numpy()
         y_np = y.detach().cpu().numpy()
 
-        betti_errors_0 = torch.empty((y_pred_np.shape[0],), device='cpu')
-        betti_errors_1 = torch.empty((y_pred_np.shape[0],), device='cpu')
+        betti_errors_0 = torch.empty((y_pred_np.shape[0],), device="cpu")
+        betti_errors_1 = torch.empty((y_pred_np.shape[0],), device="cpu")
         for idx in range(y_pred_np.shape[0]):
             err_0 = 0.0
             err_1 = 0.0
@@ -88,31 +97,30 @@ class BettiNumberMetric():
                 betti_errors_1[idx] = 0.0
 
         return betti_errors_0, betti_errors_1
-    
+
     def betti_number_per_label(self, pred: np.ndarray, gt: np.ndarray, label: int):
         label_pred = (pred == label).squeeze(0)
         label_gt = (gt == label).squeeze(0)
 
         if not np.any(label_gt):
             # logger.warning(f"Label {label} not present in ground truth")
-            b0_gt, b1_gt = 0,0
+            b0_gt, b1_gt = 0, 0
         else:
             b0_gt, b1_gt = self.betti_numbers_image(label_gt)
-            
+
         if not np.any(label_pred):
             # logger.warning(f"Label {label} not present in prediction")
-            b0_pred, b1_pred = 0,0
+            b0_pred, b1_pred = 0, 0
         else:
             b0_pred, b1_pred = self.betti_numbers_image(label_pred)
 
         return abs(b0_gt - b0_pred), abs(b1_gt - b1_pred)
-    
 
     def betti_numbers_image(self, image: np.ndarray):
         """
-            Computes the betti number 0 and betti number 1 for a single image.
-            :param image: 2D numpy array
-            :return: (int, int): tuple of betti number 0 and betti number 1 
+        Computes the betti number 0 and betti number 1 for a single image.
+        :param image: 2D numpy array
+        :return: (int, int): tuple of betti number 0 and betti number 1
         """
         b0 = self.connected_components(image)
         skeleton = skeletonize(image)
@@ -121,17 +129,15 @@ class BettiNumberMetric():
             euler_characteristic = regions[0].euler_number
         else:
             euler_characteristic = 0
-        
-        return b0, b0 - euler_characteristic
 
-    
+        return b0, b0 - euler_characteristic
 
     def extract_labels(self, y_pred: np.ndarray, y: np.ndarray):
         """
-            Adapted from https://github.com/CoWBenchmark/TopCoW_Eval_Metrics/blob/master/metric_functions.py#L18.
-            :param y_pred: 2D numpy array
-            :param y: 2D numpy array
-            :return: list[int]: list of labels appearing in at least one of the two images
+        Adapted from https://github.com/CoWBenchmark/TopCoW_Eval_Metrics/blob/master/metric_functions.py#L18.
+        :param y_pred: 2D numpy array
+        :param y: 2D numpy array
+        :return: list[int]: list of labels appearing in at least one of the two images
         """
         labels_gt = np.unique(y)
         labels_pred = np.unique(y_pred)
@@ -140,17 +146,38 @@ class BettiNumberMetric():
         if not self.include_background and self.background_label in labels:
             labels.remove(self.background_label)
         return labels
-        
 
     def connected_components(self, img: np.ndarray):
         """
-            Computes the number of connected components in a 2D image.
-            :param img: 2D numpy array
-            :return: int: number of connected components
+        Computes the number of connected components in a 2D image.
+        :param img: 2D numpy array
+        :return: int: number of connected components
         """
-        assert(img.ndim == 2, "Image must be 2D")
-        assert(img.ndim >= self.connectivity, "Connectivity must be less than or equal to the dimension of the image")
+        assert (img.ndim == 2, "Image must be 2D")
+        assert (
+            img.ndim >= self.connectivity,
+            "Connectivity must be less than or equal to the dimension of the image",
+        )
 
         _, num_components = label(img, connectivity=self.connectivity, return_num=True)
         return num_components
-    
+
+
+class BettiNumberMetric_0(BettiNumberMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.logging_names = ["betti_number_0"]
+
+    def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
+        error, _ = super().__call__(y_pred, y)
+        return error
+
+
+class BettiNumberMetric_1(BettiNumberMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.logging_names = ["betti_number_1"]
+
+    def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
+        _, error = super().__call__(y_pred, y)
+        return error
