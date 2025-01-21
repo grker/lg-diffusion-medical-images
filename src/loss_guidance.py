@@ -68,7 +68,9 @@ def main(config: LossGuidanceInferenceConfig):
         )
     
     # add the loss guidance config to the diffusion config
+    print(f"new config: {config}")
     old_config.diffusion.loss_guidance = config.loss_guidance
+    old_config.dataloader.val_batch_size = config.test_batch_size
 
     if torch.cuda.is_available():
         print(f"cuda available, using device: {torch.cuda.current_device()}")
@@ -105,7 +107,9 @@ def main(config: LossGuidanceInferenceConfig):
         checkpoint_path=checkpoint_path, **model_args
     )
 
+    print
     trainer = pl.Trainer(
+        max_epochs=old_config.trainer.max_epochs,
         enable_progress_bar=True,
         log_every_n_steps=1,
         enable_checkpointing=True,
@@ -115,8 +119,10 @@ def main(config: LossGuidanceInferenceConfig):
         logger=wandb_logger,
         accelerator=old_config.trainer.accelerator,
         devices=1,
+        num_sanity_val_steps=0,
+        inference_mode=False,
     )
-
+    print(f"start with the testing")
     trainer.test(seg_model, test_loader)
 
 

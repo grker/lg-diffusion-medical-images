@@ -11,7 +11,7 @@
 USERNAME=$USER
 PROJECT_NAME=master_thesis
 DIRECTORY=/data/${USERNAME}/${PROJECT_NAME}
-MAMBA_ENVIRONMENT=master_thesis
+MAMBA_ENVIRONMENT=dmiise
 
 mkdir -p ${DIRECTORY}/jobs
 
@@ -62,10 +62,11 @@ fi
 # <<< conda initialize <<<
 
 mamba activate ${MAMBA_ENVIRONMENT}
-echo "Mamba activated"
+echo "Mamba activated using the environment ${MAMBA_ENVIRONMENT}"
 cd ${DIRECTORY}
 
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-python src/test_ensemble.py run_id=29bjivsr 'repetitions=[1]'
+# python src/test_ensemble.py run_id=29bjivsr 'repetitions=[1]'
+python src/loss_guidance.py run_id=29bjivsr loss_guidance.starting_step=5

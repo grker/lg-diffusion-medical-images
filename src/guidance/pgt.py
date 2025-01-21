@@ -201,6 +201,7 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
         self.analysis = pgt_config.analysis
 
         super().__init__(pgt_config)
+        print(f"pgt gt object created with config: {pgt_config}")
     
     
     def pseudo_gt(self, x_softmax: torch.Tensor, no_scaling: bool=False):
@@ -234,14 +235,19 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
                 torch.Tensor, shape (height, width)
         """
 
+        print(f"generating likelihood map for {num_components} components", flush=True)
         device = class_probs.device
         likelihood = torch.zeros_like(class_probs, device=device)
+        print(f"max in class probs: {torch.max(class_probs)}")
+        print(f"min in class probs: {torch.min(class_probs)}")
         cp = CubicalPersistence(class_probs.cpu(), relative=False, reduced=False, filtration='superlevel', construction='V', birth_UF=True)
+        print(f"found intervals: {cp.get_intervals(refined=False)[0][:2]}")
         intervals_and_threshold = cp.threshold_analysis_dim0_components(num_components=num_components, num_bins=self.analysis.num_bins, degree=self.analysis.poly_degree, minimal_threshold=self.analysis.minimal_threshold)
         
         for interval, threshold in intervals_and_threshold:
             print(f"using interval: {interval}, threshold: {threshold} for copmonent map")
             component_map = cp.component_map(threshold, interval[0], base_prob=0.0, device=device)
+            component_map = component_map.to(device=likelihood.device)
             likelihood = torch.max(likelihood, component_map)
 
         return likelihood

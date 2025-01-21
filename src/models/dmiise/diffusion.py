@@ -23,9 +23,12 @@ from utils.visualize import (
     visualize_mean_variance,
     gif_over_timesteps,
 )
-from utils.metrics import compute_and_log_metrics
+from utils.metrics import (
+    compute_and_log_metrics,
+    generate_metrics_fn,
+)
 from utils.mask_transformer import BaseMaskMapping
-from utils.helper import unpack_batch
+from utils.helper import unpack_batch, log_cuda_memory
 
 
 def scheduler_factory(
@@ -149,6 +152,7 @@ class DDPM(pl.LightningModule):
         noisy_image = self.scheduler.add_noise(gt_train_masks, noise, timesteps)
 
         prediction = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
+        print(f"prediction requires grad: {prediction.requires_grad}")
 
         loss = 0.0
         if self.prediction_type == "epsilon":
@@ -217,9 +221,19 @@ class DDPM(pl.LightningModule):
 
             # Detach before passing for metric computation
             if phase == "test":
-                compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log, x_axis_name="repetition", x_axis_value=reps)
+                compute_and_log_metrics(
+                    self.metrics,
+                    seg_mask,
+                    gt_masks,
+                    phase,
+                    self.log,
+                    x_axis_name="repetition",
+                    x_axis_value=reps,
+                )
             else:
-                compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+                compute_and_log_metrics(
+                    self.metrics, seg_mask, gt_masks, phase, self.log
+                )
 
             # Visualization
             index = random.randint(0, num_samples - 1)
@@ -354,10 +368,21 @@ class DDPM_DPS(DDPM):
         super().__init__(
             model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
         )
-        
+
         self.starting_step = diffusion_config.loss_guidance.starting_step
         self.gamma = diffusion_config.loss_guidance.gamma
-        self.pgt = self.initialize_pgt(diffusion_config.loss_guidance.pseudo_gt_generator)
+
+        self.initialize_pgt(diffusion_config.loss_guidance.pseudo_gt_generator)
+        metrics_fn_dict = generate_metrics_fn(
+            diffusion_config.loss_guidance.guidance_metrics,
+            self.num_classes,
+        )
+
+        self.guidance_metrics = GuidanceMetric(
+            metrics_fn_dict,
+            self.scheduler.config.num_train_timesteps,
+        )
+
         self.topology_loss = nn.CrossEntropyLoss()
 
     def initialize_pgt(self, pseudo_gt_generator_config: PseudoGTConfig):
@@ -370,8 +395,9 @@ class DDPM_DPS(DDPM):
                 f"PseudoGTGenerator {pseudo_gt_generator_config.name} not found!"
             )
 
+    @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
-        self.model.eval()
+        self.model.train(True)
 
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
@@ -379,61 +405,163 @@ class DDPM_DPS(DDPM):
 
         ensemble_mask = []
         for rep in range(reps):
-            noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
-            for t in tqdm(self.scheduler.timesteps):
-                model_output = self.model(
-                    torch.cat((noisy_mask, images), dim=1),
-                    torch.full((num_samples,), t, device=images.device),
-                )
+            noisy_mask = torch.rand_like(
+                gt_train_masks, device=images.device, requires_grad=True
+            )
 
-                if t < self.starting_step:
-                    pseudo_gt = self.pgt.pseudo_gt(noisy_mask)
-                    loss = self.topology_loss(model_output, pseudo_gt)
-                    loss.backward()
+            for t in tqdm(self.scheduler.timesteps[: -self.starting_step]):
+                noisy_mask = self.unguided_step(noisy_mask, images, t)
 
-                    noisy_mask_grads = noisy_mask.grad
+            # activate the gradient for the model
+            for name, param in self.model.named_parameters():
+                if not param.requires_grad:
+                    param.requires_grad_(True)
 
-                    noisy_mask = (
-                        self.scheduler.step(
-                            model_output=model_output, timestep=t, sample=noisy_mask
-                        ).prev_sample
-                        - self.gamma * noisy_mask_grads
-                    )
-                else:
-                    noisy_mask = (
-                        self.scheduler.step(
-                            model_output=model_output, timestep=t, sample=noisy_mask
-                        ).prev_sample
-                    )
+            for t in tqdm(self.scheduler.timesteps[-self.starting_step :]):
+                noisy_mask = self.guided_step(noisy_mask, images, t)
+                self.guidance_metrics.update(noisy_mask, gt_masks, t)
 
             ensemble_mask.append(noisy_mask.detach().cpu())
 
-            logits = self.mask_transformer.get_logits(torch.stack(ensemble_mask, dim=0))
-            seg_mask = self.mask_transformer.get_segmentation(logits)
-            gt_masks = gt_masks.to(device=seg_mask.device)
-
-            # Detach before passing for metric computation
-            compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
-
-            # Visualization
-            index = random.randint(0, num_samples - 1)
-            visualize_segmentation(
-                images,
-                gt_masks,
-                seg_mask,
-                None,
-                phase,
-                self.mask_transformer.gt_mapping_for_visualization(),
-                batch_idx,
-                self.num_classes,
-                [index],
+        # Prediction Segmentation mask
+        logits = self.mask_transformer.get_logits(
+            torch.stack(
+                ensemble_mask,
+                dim=0,
             )
-            if reps > 1:
-                visualize_mean_variance(
-                    ensemble_mask, phase, batch_idx, index_list=[index]
-                )
+        )
+        seg_mask = self.mask_transformer.get_segmentation(logits)
+        gt_masks = gt_masks.to(device=seg_mask.device)
+
+        # Detach before passing for metric computation
+        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+
+        # Visualization
+        index = random.randint(0, num_samples - 1)
+        visualize_segmentation(
+            images,
+            gt_masks,
+            seg_mask,
+            None,
+            phase,
+            self.mask_transformer.gt_mapping_for_visualization(),
+            batch_idx,
+            self.num_classes,
+            [index],
+        )
+        if reps > 1:
+            visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
 
         print(
             f"memory allocated after ensemble mask computation: {torch.cuda.memory_allocated()}"
         )
         return 0
+
+    def guided_step(
+        self,
+        noisy_mask: torch.Tensor,
+        images: torch.Tensor,
+        t: int,
+    ):
+        num_samples = images.shape[0]
+        model_output = self.model(
+            torch.cat((noisy_mask, images), dim=1),
+            torch.full((num_samples,), t, device=images.device),
+        )
+
+        pseudo_gt = self.pgt.pseudo_gt(
+            torch.softmax(noisy_mask, dim=1).detach(),
+        )
+        loss = self.topology_loss(model_output, pseudo_gt)
+        loss.backward()
+
+        with torch.no_grad():
+            noisy_mask_grads = noisy_mask.grad
+            noisy_mask = (
+                self.scheduler.step(
+                    model_output=model_output, timestep=t, sample=noisy_mask
+                ).prev_sample
+                - self.gamma * noisy_mask_grads.detach()
+            )
+
+        return noisy_mask
+
+    def unguided_step(
+        self,
+        noisy_mask: torch.Tensor,
+        images: torch.Tensor,
+        t: int,
+    ):
+        num_samples = images.shape[0]
+        model_output = self.model(
+            torch.cat((noisy_mask, images), dim=1),
+            torch.full((num_samples,), t, device=images.device),
+        )
+
+        noisy_mask = self.scheduler.step(
+            model_output=model_output,
+            timestep=t,
+            sample=noisy_mask,
+        ).prev_sample
+
+        model_output = model_output.detach().cpu()
+        return noisy_mask
+
+    def track_betti_error(self, noisy_mask: torch.Tensor, gt_mask: torch.Tensor):
+        """
+        params:
+            noisy_mask: (N, classes, H, W)
+            gt_mask: (N, classes, H, W)
+        """
+
+        segmentation = self.mask_transformer.get_segmentation(
+            self.mask_transformer.get_logits(noisy_mask.unsqueeze(0)),
+        )
+
+        return None
+
+
+class GuidanceMetric:
+    def __init__(
+        self,
+        metrics_dict: dict,
+        timesteps: int,
+        initial_value: float = 0.0,
+    ):
+        self.metrics_dict = metrics_dict
+        self.timesteps = [i for i in range(timesteps)]
+
+        self.metric_values_per_timestep = {}
+        for name in self.metrics_dict.keys():
+            self.metric_values_per_timestep[name] = [initial_value] * timesteps
+
+        self.total = [0] * timesteps
+
+    def update(self, prediction: torch.Tensor, gt: torch.Tensor, timestep: int):
+        num_samples = prediction.shape[0]
+
+        for name, metric_fn in self.metrics_dict.items():
+            metric_value = metric_fn(prediction, gt)
+            self.metric_values_per_timestep[name][timestep] += torch.sum(metric_value)
+
+        self.total[timestep] += num_samples
+
+    def compute(self):
+        metric_values = {}
+        for name in self.metrics_dict.keys():
+            metric_values[name] = [
+                self.metric_values_per_timestep[name][timestep] / self.total[timestep]
+                for timestep in self.timesteps
+            ]
+
+        return metric_values
+
+    def log_to_wandb(self):
+        computed_values = self.compute()
+        for name in self.metrics_dict.keys():
+            data = [
+                [x, y] for (x, y) in zip(self.timesteps, computed_values[name])
+            ].reverse()
+            table = wandb.Table(data=data, columns=["timestep", name])
+
+            wandb.log({f"{name}_metric_per_timestep": table})

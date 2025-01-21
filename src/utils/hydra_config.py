@@ -153,6 +153,7 @@ class OptimizerConfig:
 class ScalingFunctionConfig:
     pass
 
+
 class LikelihoodTempScalingConfig(ScalingFunctionConfig):
     alpha: float
 
@@ -180,10 +181,11 @@ class PseudoGTDim0_CompsConfig(PseudoGTConfig):
     analysis: Dim0_ThresholdAnalysisConfig
 
 
-class LossGuidanceConfig():
+class LossGuidanceConfig:
     gamma: float
     starting_step: int
     pseudo_gt_generator: PseudoGTConfig
+    guidance_metrics: MetricsConfig
 
 
 class LossGuidedDiffusionConfig(DiffusionConfig):
@@ -192,6 +194,7 @@ class LossGuidedDiffusionConfig(DiffusionConfig):
 
 # Main Configs (configs passed to main functions)
 # ---------------------------------------------
+
 
 # Segmentation Config (trains and tests a segmentation model):
 class SegmentationConfig:
@@ -212,13 +215,14 @@ class SegmentationConfig:
 
 
 # Config for the loss guidance inference with a trained model
-class LossGuidanceInferenceConfig():
+class LossGuidanceInferenceConfig:
     wandb_username: str
     wandb_project: str
     run_id: str
     seed: int
     wandb_tags: list[str]
     loss_guidance: LossGuidanceConfig
+    test_batch_size: int
 
 
 # Ensemble Config (tests an ensemble of a trained model):
@@ -229,4 +233,3 @@ class EnsembleConfig:
     repetitions: list[int]
     seed: int
     wandb_tags: list[str]
-
