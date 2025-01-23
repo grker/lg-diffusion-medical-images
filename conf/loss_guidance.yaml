@@ -7,3 +7,4 @@ run_id: 123456
 seed: 42
 wandb_tags: [loss_guidance]
 test_batch_size: 4
+repetitions: [1]

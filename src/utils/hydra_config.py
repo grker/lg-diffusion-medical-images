@@ -223,6 +223,7 @@ class LossGuidanceInferenceConfig:
     wandb_tags: list[str]
     loss_guidance: LossGuidanceConfig
     test_batch_size: int
+    repetitions: list[int]
 
 
 # Ensemble Config (tests an ensemble of a trained model):

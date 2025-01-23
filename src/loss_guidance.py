@@ -66,7 +66,7 @@ def main(config: LossGuidanceInferenceConfig):
         raise ValueError(
             "Loss guidance is not supported for UNet segmentation. Please specify a trained model with the project name 'dmiise'."
         )
-    
+
     # add the loss guidance config to the diffusion config
     print(f"new config: {config}")
     old_config.diffusion.loss_guidance = config.loss_guidance
@@ -96,8 +96,14 @@ def main(config: LossGuidanceInferenceConfig):
     # state_dict = {k: v for k, v in state_dict.items() if "loss_fn" not in k}
     # seg_model.load_state_dict(state_dict)
 
+    old_config.dataloader.validation_ratio = 0.2
+    old_config.dataloader.train_ratio = 0.75
+
     segmentor = create_segmentor(old_config, loss_guided=True)
     seg_model_class, test_loader, model_args = segmentor.initialize(test=True)
+
+    print(f"number of batches in test loader: {len(test_loader)}")
+    print(f"number of images in test loader: {len(test_loader.dataset)}")
 
     # load best model of the run
     model_artifact = wandb.use_artifact(f"model-{config.run_id}:best", type="model")
@@ -123,7 +129,10 @@ def main(config: LossGuidanceInferenceConfig):
         inference_mode=False,
     )
     print(f"start with the testing")
-    trainer.test(seg_model, test_loader)
+    for rep in config.repetitions:
+        print(f"testing with repetition {rep}")
+        seg_model.repetitions_test = rep
+        trainer.test(seg_model, test_loader)
 
 
 if __name__ == "__main__":
