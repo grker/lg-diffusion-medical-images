@@ -5,6 +5,9 @@ results/
 lightning_logs/
 jobs/
 hydra_output/
+artifacts/
+outputs/
+
 
 # Ignore all __pycache__ directories
 __pycache__/
