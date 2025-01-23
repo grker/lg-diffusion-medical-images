@@ -103,7 +103,7 @@ def likelyhood_temperature_scaling(
     returns:
         torch.Tensor, shape (batch_size, num_classes, height, width)
     """
-
+    # second part does not make sense
     x_softmax = x_softmax / (1 - likelyhood) * alpha + torch.softmax(
         x_softmax, dim=1
     ) * (1 - alpha)
@@ -255,6 +255,7 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
             )
         )
         self.analysis = pgt_config.analysis
+        self.fixed_threshold = 0.4
 
         super().__init__(pgt_config)
         print(f"pgt gt object created with config: {pgt_config}")
@@ -315,6 +316,8 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
             print(
                 f"using interval: {interval}, threshold: {threshold} for copmonent map"
             )
+            print(f"using fixed threshold of: {self.fixed_threshold}")
+            threshold = self.fixed_threshold
             component_map = cp.component_map(
                 threshold, interval[0], base_prob=0.0, device=device
             )

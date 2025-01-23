@@ -591,7 +591,12 @@ class GuidanceMetric:
         metric_values = {}
         for name in self.metrics_dict.keys():
             metric_values[name] = [
-                self.metric_values_per_timestep[name][timestep] / self.total[timestep]
+                (
+                    self.metric_values_per_timestep[name][timestep]
+                    / self.total[timestep]
+                    if self.total[timestep] > 0
+                    else 0
+                )
                 for timestep in self.timesteps
             ]
 
@@ -604,6 +609,7 @@ class GuidanceMetric:
             data = [
                 [x, y] for (x, y) in zip(self.timesteps, computed_values[name])
             ].reverse()
+            print(f"data: {data}")
             table = wandb.Table(data=data, columns=["timestep", name])
 
             wandb.log({f"{name}_metric_per_timestep": table})
