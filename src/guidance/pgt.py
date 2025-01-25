@@ -246,6 +246,91 @@ class PseudoGTGeneratorBase:
         )
 
 
+class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
+    def __init__(self, pgt_config: PseudoGTConfig):
+        super().__init__(pgt_config)
+
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+
+        self.base_prob = 0.1
+
+    def pseudo_gt(self, x_softmax: torch.Tensor):
+        if x_softmax.device != self.device:
+            print(f"moving x_softmax to device: {self.device}")
+            x_softmax = x_softmax.to(self.device)
+
+        prediction = torch.argmax(x_softmax, dim=1)
+        prediction = torch.zeros_like(x_softmax).scatter_(1, prediction, 1)
+
+        for sample_idx in range(prediction.shape[0]):
+            for class_idx in range(self.num_classes):
+                component_map = self.component_map(
+                    prediction[sample_idx, class_idx], self.topo_features[class_idx][0]
+                )
+
+        likelihood = component_map * x_softmax
+        likelihood = torch.where(likelihood > 0, likelihood, self.base_prob)
+
+        return likelihood
+
+    def component_map(prediction: torch.Tensor, num_components: int):
+        """
+        Generate a component map for the given prediction. Pixels belonging to the same component are assigned the same value. Background is 0.
+        params:
+            prediction: torch.Tensor, shape (batch_size, height, width)
+            num_components: int
+        returns:
+            torch.Tensor, shape (height, width)
+        """
+        width, height = prediction.shape[2], prediction.shape[3]
+        component_map = torch.arange(width * height).reshape(height, width) * prediction
+
+        for i in range(2 * max(width, height)):
+            component_map = (
+                torch.max_pool2d(component_map, kernel_size=3, stride=1) * prediction
+            )
+
+        filtered_component_map = component_map
+
+        largest_value_in_map = torch.max(component_map)
+        largest_component = -1
+        largest_component_size = 0
+        components = []
+
+        while largest_value_in_map > 0:
+            component = filtered_component_map == largest_value_in_map
+            component_size = torch.sum(component)
+
+            if component_size > largest_component_size:
+                largest_component_size = component_size
+                largest_component = largest_value_in_map
+
+            components.append((largest_value_in_map, component_size))
+
+            filtered_component_map = torch.where(
+                component_map == largest_value_in_map,
+                0,
+                filtered_component_map,
+            )
+
+            largest_value_in_map = torch.max(filtered_component_map)
+
+        components.sort(key=lambda x: x[1], reverse=True)
+        print(f"components: {components}")
+        print(f"largest component: {largest_component}")
+        print(f"largest component size: {largest_component_size}")
+        numbers = [components[i][0] for i in range(num_components)]
+
+        binary_map = torch.zeros_like(component_map, device=component_map.device)
+        for i in range(num_components):
+            binary_map = torch.add(binary_map, component_map == numbers[i])
+
+        return binary_map
+
+
 class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
 
     def __init__(self, pgt_config: PseudoGTDim0_CompsConfig):

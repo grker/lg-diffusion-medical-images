@@ -390,6 +390,10 @@ class DDPM_DPS(DDPM):
             from guidance.pgt import PseudoGTGeneratorDim0_Comps
 
             self.pgt = PseudoGTGeneratorDim0_Comps(pseudo_gt_generator_config)
+        elif pseudo_gt_generator_config.name == "pgtseg":
+            from guidance.pgt import PGTSegGeneratorDim0    
+
+            self.pgt = PGTSegGeneratorDim0(pseudo_gt_generator_config)
         else:
             raise ValueError(
                 f"PseudoGTGenerator {pseudo_gt_generator_config.name} not found!"
