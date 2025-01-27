@@ -241,7 +241,6 @@ def visualize_mean_variance(
 
     ensemble_mask = [rep[index_list] for rep in ensemble_mask]
     ensemble_mask = torch.stack(ensemble_mask, dim=0)
-    print(f"device of ensemble_mask: {ensemble_mask.device}")
 
     if ensemble_mask.shape[2] == 1:
         # binary segmentation
@@ -285,15 +284,8 @@ def visualize_mean_variance_class_wise(
         mean_mask = torch.mean(class_mask, dim=0)
         std_mask = torch.std(class_mask, dim=0)
 
-        # print(f"min mean_mask before clamp: {torch.min(mean_mask)}")
-        # print(f"max mean_mask before clamp: {torch.max(mean_mask)}")
-
         mean_mask = torch.clamp(mean_mask, min=0, max=1)
         std_mask = torch.clamp(std_mask, min=0, max=1)
-
-        # print(f"min mean_mask after clamp: {torch.min(mean_mask)}")
-        # print(f"max mean_mask after clamp: {torch.max(mean_mask)}")
-        # print(f"mean_mask {mean_mask}")
 
         mean_mask_classes[:, class_idx, :, :] = mean_mask
         std_mask_classes[:, class_idx, :, :] = std_mask
@@ -408,3 +400,46 @@ def gif_over_timesteps(
     )
 
     # wandb.log({"gif_over_timesteps": wandb.Video(frames, caption=f"Gif over timesteps for mode {mode}")})
+
+
+def visualize_component_map(
+    component_map: torch.Tensor, title: str, batch_idx: int, merged: bool = True
+):
+    """
+    :param component_map: tensor of shape (batch_size, num_classes, H, W)
+    :param title: str, title of the visualization
+    """
+
+    num_classes = component_map.shape[1]
+
+    if merged:
+        for class_idx in range(num_classes):
+            component_map[:, class_idx, :, :] = (
+                component_map[:, class_idx, :, :] * class_idx
+            )
+
+        component_map = torch.argmax(component_map, dim=1)
+
+        for idx in range(component_map.shape[0]):
+            wandb.log(
+                {
+                    f"{title}": create_wandb_image(
+                        normalize(component_map[idx]), f"BIdx_{batch_idx}_Idx_{idx}"
+                    )
+                }
+            )
+
+    else:
+        for idx in range(component_map.shape[0]):
+            concat_component_map = torch.cat(
+                [
+                    component_map[idx, class_idx, :, :]
+                    for class_idx in range(num_classes)
+                ],
+                dim=1,
+            )
+        grid = torchvision.utils.make_grid(
+            concat_component_map, nrow=min(num_classes, 4), padding=10
+        )
+        print(f"grid shape: {grid.shape}", flush=True)
+        wandb.log({f"{title}": wandb.Image(grid, f"BIdx_{batch_idx}_Idx_{idx}")})

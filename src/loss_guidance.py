@@ -96,8 +96,8 @@ def main(config: LossGuidanceInferenceConfig):
     # state_dict = {k: v for k, v in state_dict.items() if "loss_fn" not in k}
     # seg_model.load_state_dict(state_dict)
 
-    old_config.dataloader.validation_ratio = 0.2
-    old_config.dataloader.train_ratio = 0.75
+    # old_config.dataloader.validation_ratio = 0.2
+    # old_config.dataloader.train_ratio = 0.75
 
     segmentor = create_segmentor(old_config, loss_guided=True)
     seg_model_class, test_loader, model_args = segmentor.initialize(test=True)

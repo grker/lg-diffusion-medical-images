@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash -l
 #SBATCH -p lowprio
 #SBATCH --mail-type=NONE # mail configuration: NONE, BEGIN, END, FAIL, REQUEUE, AL
 #SBATCH --output=/data/%u/master_thesis/jobs/%j.out # where to store the output (%j is the JOBID), subdirectory "jobs" must exist
@@ -69,4 +69,4 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 # python src/test_ensemble.py run_id=29bjivsr 'repetitions=[1]'
-python src/loss_guidance.py run_id=29bjivsr loss_guidance.starting_step=5
+python src/loss_guidance.py run_id=29bjivsr loss_guidance.starting_step=1 loss_guidance.pseudo_gt_generator.name=PGTSegGeneratorDim0 loss_guidance.gamma=0.1

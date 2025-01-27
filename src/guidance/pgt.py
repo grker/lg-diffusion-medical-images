@@ -259,7 +259,7 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
 
         self.base_prob = 0.1
 
-    def pseudo_gt(self, x_softmax: torch.Tensor):
+    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
         if x_softmax.device != self.device:
             print(f"moving x_softmax to device: {self.device}")
             x_softmax = x_softmax.to(self.device)
@@ -267,13 +267,24 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
         prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)
         prediction = torch.zeros_like(x_softmax).scatter_(1, prediction, 1)
 
+        binary_component_map = torch.zeros_like(prediction)
+
         for sample_idx in range(prediction.shape[0]):
             for class_idx in range(self.num_classes):
-                component_map = self.component_map(
+                binary_component_map[sample_idx, class_idx] = self.component_map(
                     prediction[sample_idx, class_idx], self.topo_features[class_idx][0]
                 )
 
-        likelihood = component_map * x_softmax
+        # from utils.visualize import visualize_component_map
+
+        # visualize_component_map(
+        #     binary_component_map[0].unsqueeze(0),
+        #     f"binary_component_map_timestep_{t}",
+        #     batch_idx=batch_idx,
+        #     merged=False,
+        # )
+
+        likelihood = binary_component_map * x_softmax
         likelihood = torch.where(likelihood > 0, likelihood, self.base_prob)
 
         return likelihood
@@ -287,11 +298,12 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
         returns:
             torch.Tensor, shape (height, width)
         """
-        print(f"prediction shape: {prediction.shape}")
         width, height = prediction.shape[0], prediction.shape[1]
         prediction = prediction.unsqueeze(0)
         component_map = (
-            torch.arange(width * height).reshape(height, width).unsqueeze(0)
+            torch.arange(width * height, device=prediction.device)
+            .reshape(height, width)
+            .unsqueeze(0)
             * prediction
         )
 
@@ -317,7 +329,6 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
                 largest_component = largest_value_in_map
 
             components.append((largest_value_in_map, component_size))
-            print(f"components: {components}")
 
             filtered_component_map = torch.where(
                 component_map == largest_value_in_map,
@@ -328,9 +339,7 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
             largest_value_in_map = torch.max(filtered_component_map)
 
         components.sort(key=lambda x: x[1], reverse=True)
-        print(f"components: {components}")
-        print(f"largest component: {largest_component}")
-        print(f"largest component size: {largest_component_size}")
+        num_components = min(num_components, len(components))
         numbers = [components[i][0] for i in range(num_components)]
 
         binary_map = torch.zeros_like(component_map, device=component_map.device)
@@ -388,8 +397,6 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
 
         device = class_probs.device
         likelihood = torch.zeros_like(class_probs, device=device)
-        print(f"max in class probs: {torch.max(class_probs)}")
-        print(f"min in class probs: {torch.min(class_probs)}")
         cp = CubicalPersistence(
             class_probs.cpu(),
             relative=False,
@@ -398,7 +405,6 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
             construction="V",
             birth_UF=True,
         )
-        print(f"found intervals: {cp.get_intervals(refined=False)[0][:2]}")
         intervals_and_threshold = cp.threshold_analysis_dim0_components(
             num_components=num_components,
             num_bins=self.analysis.num_bins,

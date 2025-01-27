@@ -30,6 +30,8 @@ from utils.metrics import (
 from utils.mask_transformer import BaseMaskMapping
 from utils.helper import unpack_batch, log_cuda_memory
 
+from guidance.pgt import PseudoGTGeneratorBase
+
 
 def scheduler_factory(
     scheduler_type: str, beta_start: float, beta_end: float, noise_steps: int
@@ -129,9 +131,8 @@ class DDPM(pl.LightningModule):
 
         assert (
             images.shape[0] == gt_masks.shape[0]
-            and gt_masks.shape[0] == gt_train_masks.shape[0],
-            "Assertion Error: images, gt_masks and gt_train_masks need to have the same number of samples",
-        )
+            and gt_masks.shape[0] == gt_train_masks.shape[0]
+        ), "Assertion Error: images, gt_masks and gt_train_masks need to have the same number of samples"
 
         return images, gt_masks, gt_train_masks
 
@@ -152,7 +153,6 @@ class DDPM(pl.LightningModule):
         noisy_image = self.scheduler.add_noise(gt_train_masks, noise, timesteps)
 
         prediction = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
-        print(f"prediction requires grad: {prediction.requires_grad}")
 
         loss = 0.0
         if self.prediction_type == "epsilon":
@@ -185,7 +185,6 @@ class DDPM(pl.LightningModule):
                     *gt_train_masks.shape[1:],
                 )
             )
-            print(f"prediction_for_gif shape: {prediction_for_gif.shape}")
             random_idx = random.randint(0, num_samples - 1)
 
         with torch.no_grad():
@@ -253,9 +252,6 @@ class DDPM(pl.LightningModule):
                     ensemble_mask, phase, batch_idx, index_list=[index]
                 )
 
-        print(
-            f"memory allocated after ensemble mask computation: {torch.cuda.memory_allocated()}"
-        )
         return 0
 
     def test_variance(
@@ -356,6 +352,12 @@ class DDPM(pl.LightningModule):
 
 
 class DDPM_DPS(DDPM):
+    pgt: PseudoGTGeneratorBase
+    starting_step: int
+    gamma: float
+    metrics_fn_dict: dict
+    topology_loss: nn.Module
+
     def __init__(
         self,
         model: nn.Module,
@@ -380,20 +382,18 @@ class DDPM_DPS(DDPM):
 
         self.guidance_metrics = GuidanceMetric(
             metrics_fn_dict,
-            self.scheduler.config.num_train_timesteps,
+            self.starting_step,
         )
 
         self.topology_loss = nn.CrossEntropyLoss()
 
     def initialize_pgt(self, pseudo_gt_generator_config: PseudoGTConfig):
-        if pseudo_gt_generator_config.name == "dim0_threshold_analysis":
-            from guidance.pgt import PseudoGTGeneratorDim0_Comps
+        import guidance.pgt
 
-            self.pgt = PseudoGTGeneratorDim0_Comps(pseudo_gt_generator_config)
-        elif pseudo_gt_generator_config.name == "pgtseg":
-            from guidance.pgt import PGTSegGeneratorDim0    
-
-            self.pgt = PGTSegGeneratorDim0(pseudo_gt_generator_config)
+        if hasattr(guidance.pgt, pseudo_gt_generator_config.name):
+            self.pgt = getattr(guidance.pgt, pseudo_gt_generator_config.name)(
+                pseudo_gt_generator_config
+            )
         else:
             raise ValueError(
                 f"PseudoGTGenerator {pseudo_gt_generator_config.name} not found!"
@@ -401,25 +401,19 @@ class DDPM_DPS(DDPM):
 
     @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
-        log_cuda_memory(f"before val_test_step")
-        self.model.train(True)
+        # log_cuda_memory(f"before val_test_step")
+        self.model.eval()
 
         images, gt_masks, gt_train_masks = unpack_batch(batch)
         num_samples = images.shape[0]
         reps = self.repetitions_test if phase == "test" else self.repetitions
 
-        print(f"number of repetitions: {reps}")
-
         ensemble_mask = []
         for rep in range(reps):
-            noisy_mask = torch.rand_like(
-                gt_train_masks, device=images.device, requires_grad=True
-            )
+            noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
 
             for t in tqdm(self.scheduler.timesteps[: -self.starting_step]):
-                # log_cuda_memory(f"before unguided step {t}")
                 noisy_mask = self.unguided_step(noisy_mask, images, t)
-                # log_cuda_memory(f"after unguided step {t}")
 
             # activate the gradient for the model
             for name, param in self.model.named_parameters():
@@ -428,9 +422,8 @@ class DDPM_DPS(DDPM):
 
             noisy_mask = noisy_mask.requires_grad_(True)
 
-            for t in tqdm(self.scheduler.timesteps[-self.starting_step :]):
-                # log_cuda_memory(f"before guided step {t}")
-                noisy_mask = self.guided_step(noisy_mask, images, t)
+            for t in tqdm(self.scheduler.timesteps[-self.starting_step : -1]):
+                noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
 
                 self.guidance_metrics.update(
                     self.mask_transformer.get_segmentation(
@@ -439,14 +432,22 @@ class DDPM_DPS(DDPM):
                     gt_masks,
                     t,
                 )
-                # log_cuda_memory(f"after guided step {t}")
 
             # deactivate the gradient for the model
             for name, param in self.model.named_parameters():
                 if param.requires_grad:
                     param.requires_grad_(False)
 
-            # log_cuda_memory(f"after rep {rep}")
+            # last step is always unguided
+            noisy_mask = noisy_mask.requires_grad_(False)
+            noisy_mask = self.unguided_step(noisy_mask, images, 0)
+            self.guidance_metrics.update(
+                self.mask_transformer.get_segmentation(
+                    self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
+                ),
+                gt_masks,
+                0,
+            )
 
             ensemble_mask.append(noisy_mask.detach().cpu())
             self.guidance_metrics.log_to_wandb()
@@ -480,12 +481,7 @@ class DDPM_DPS(DDPM):
         if reps > 1:
             visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
 
-        print(
-            f"memory allocated after ensemble mask computation: {torch.cuda.memory_allocated()}"
-        )
-
-        print(f"Batch {batch_idx} finished")
-        log_cuda_memory(f"after val_test_step")
+        # log_cuda_memory(f"after val_test_step")
         return 0
 
     @torch.inference_mode(False)
@@ -494,19 +490,17 @@ class DDPM_DPS(DDPM):
         noisy_mask: torch.Tensor,
         images: torch.Tensor,
         t: int,
+        batch_idx: int,
     ):
         num_samples = images.shape[0]
-        print(f"noisy mask has grad: {noisy_mask.requires_grad}")
         noisy_mask = noisy_mask.requires_grad_(True)
         model_output = self.model(
             torch.cat((noisy_mask, images), dim=1),
             torch.full((num_samples,), t, device=images.device),
         )
 
-        print(f"model output has grad: {model_output.requires_grad}")
-
         pseudo_gt = self.pgt.pseudo_gt(
-            torch.softmax(noisy_mask, dim=1).detach(),
+            torch.softmax(noisy_mask, dim=1).detach(), t, batch_idx
         )
         loss = self.topology_loss(model_output, pseudo_gt)
         loss.backward()
@@ -520,10 +514,14 @@ class DDPM_DPS(DDPM):
                 - self.gamma * noisy_mask_grads
             )
 
+        # from utils.visualize import visualize_component_map
+
+        # visualize_component_map(
+        #     noisy_mask_grads, f"noisy_mask_grads_timestep_{t}", batch_idx, merged=False
+        # )
+
         model_output = model_output.detach().cpu()
         noisy_mask = noisy_mask.detach().cpu()
-        print(f"new noisy mask requires grad: {new_noisy_mask.requires_grad}")
-
         return new_noisy_mask
 
     @torch.inference_mode(False)
@@ -549,19 +547,6 @@ class DDPM_DPS(DDPM):
         model_output = model_output.detach().cpu()
         return noisy_mask
 
-    def track_betti_error(self, noisy_mask: torch.Tensor, gt_mask: torch.Tensor):
-        """
-        params:
-            noisy_mask: (N, classes, H, W)
-            gt_mask: (N, classes, H, W)
-        """
-
-        segmentation = self.mask_transformer.get_segmentation(
-            self.mask_transformer.get_logits(noisy_mask.unsqueeze(0)),
-        )
-
-        return None
-
 
 class GuidanceMetric:
     def __init__(
@@ -580,14 +565,13 @@ class GuidanceMetric:
         self.total = [0] * timesteps
 
     def update(self, prediction: torch.Tensor, gt: torch.Tensor, timestep: int):
-        print(f"prediction shape: {prediction.shape}")
-        print(f"gt shape: {gt.shape}")
-
         num_samples = prediction.shape[0]
 
         for name, metric_fn in self.metrics_dict.items():
             metric_value = metric_fn(prediction, gt)
-            self.metric_values_per_timestep[name][timestep] += torch.sum(metric_value)
+            self.metric_values_per_timestep[name][timestep] += torch.sum(
+                metric_value
+            ).item()
 
         self.total[timestep] += num_samples
 
@@ -608,12 +592,9 @@ class GuidanceMetric:
 
     def log_to_wandb(self):
         computed_values = self.compute()
-        print(f"computed guidance metrics: {computed_values}")
         for name in self.metrics_dict.keys():
-            data = [
-                [x, y] for (x, y) in zip(self.timesteps, computed_values[name])
-            ].reverse()
-            print(f"data: {data}")
+            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
+            print(f"data for table: {data}")
             table = wandb.Table(data=data, columns=["timestep", name])
 
             wandb.log({f"{name}_metric_per_timestep": table})
