@@ -3,7 +3,7 @@ defaults:
 
 wandb_username: difseg
 wandb_project: difseg
-run_id: 123456
+run_id: 29bjivsr
 seed: 42
 wandb_tags: [loss_guidance]
 test_batch_size: 4

@@ -1,5 +1,5 @@
 defaults:
-  - mask_transformer: acdc_binary
+  - mask_transformer: acdc_multi
   - _self_
 
 name: acdc

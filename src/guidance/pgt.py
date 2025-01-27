@@ -198,6 +198,8 @@ class PseudoGTGeneratorBase:
 
         idx_list = [i for i in range(num_classes)]
 
+        print(f"topo items: {topo_features.items()}")
+
         for class_idx, topo_feature in topo_features.items():
             if not isinstance(topo_feature, omegaconf.dictconfig.DictConfig):
                 raise ValueError(
@@ -262,7 +264,7 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
             print(f"moving x_softmax to device: {self.device}")
             x_softmax = x_softmax.to(self.device)
 
-        prediction = torch.argmax(x_softmax, dim=1)
+        prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)
         prediction = torch.zeros_like(x_softmax).scatter_(1, prediction, 1)
 
         for sample_idx in range(prediction.shape[0]):
@@ -276,21 +278,27 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
 
         return likelihood
 
-    def component_map(prediction: torch.Tensor, num_components: int):
+    def component_map(self, prediction: torch.Tensor, num_components: int):
         """
         Generate a component map for the given prediction. Pixels belonging to the same component are assigned the same value. Background is 0.
         params:
-            prediction: torch.Tensor, shape (batch_size, height, width)
+            prediction: torch.Tensor, shape (height, width)
             num_components: int
         returns:
             torch.Tensor, shape (height, width)
         """
-        width, height = prediction.shape[2], prediction.shape[3]
-        component_map = torch.arange(width * height).reshape(height, width) * prediction
+        print(f"prediction shape: {prediction.shape}")
+        width, height = prediction.shape[0], prediction.shape[1]
+        prediction = prediction.unsqueeze(0)
+        component_map = (
+            torch.arange(width * height).reshape(height, width).unsqueeze(0)
+            * prediction
+        )
 
         for i in range(2 * max(width, height)):
             component_map = (
-                torch.max_pool2d(component_map, kernel_size=3, stride=1) * prediction
+                torch.max_pool2d(component_map, kernel_size=3, stride=1, padding=1)
+                * prediction
             )
 
         filtered_component_map = component_map
@@ -309,6 +317,7 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
                 largest_component = largest_value_in_map
 
             components.append((largest_value_in_map, component_size))
+            print(f"components: {components}")
 
             filtered_component_map = torch.where(
                 component_map == largest_value_in_map,
