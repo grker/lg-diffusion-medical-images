@@ -25,8 +25,9 @@ def generate_metrics_fn(config: MetricsConfig, num_classes: int):
         else:
             raise ValueError(f"Unknown score function {name}")
 
-        if hasattr(metric_fns[name], "num_classes"):
-            metric_fns[name].num_classes = num_classes
+        # if hasattr(metric_fns[name], "num_classes"):
+        #     metric_fns[name].num_classes = num_classes
+        #     print(f"num_classes in {name}: {metric_fns[name].num_classes}")
     return metric_fns
 
 
@@ -40,12 +41,18 @@ def compute_and_log_metrics(
     x_axis_value: float = None,
 ) -> dict:
     scores = {}
-    print(
-        f"allocated memory before metric computation: {torch.cuda.memory_allocated()}"
-    )
+    # print(
+    #     f"allocated memory before metric computation: {torch.cuda.memory_allocated()}"
+    # )
+    print(f"seg_mask max: {seg_mask.max()}")
+    print(f"gt max: {gt.max()}")
+    print(f"shape seg_mask: {seg_mask.shape}")
+    print(f"shape gt: {gt.shape}")
+
     for metric_name, metric_fn in metric_fns.items():
         try:
             score = metric_fn(seg_mask, gt)
+            print(f"score of {metric_name}: {score}")
             if (
                 hasattr(metric_fn, "logging_names")
                 and metric_fn.logging_names is not None
@@ -69,19 +76,19 @@ def compute_and_log_metrics(
                     raise ValueError("Invalid number of logging names")
             else:
                 assert type(score) == torch.Tensor, "Score must be a tensor"
-                # logger(f"{phase}_{str(metric_name)}", clean_nan_scores_and_avg(score))
-                logging(
-                    logger,
-                    f"{phase}_{str(metric_name)}",
-                    clean_nan_scores_and_avg(score),
-                    x_axis_name,
-                    x_axis_value,
-                )
+                logger(f"{phase}_{str(metric_name)}", clean_nan_scores_and_avg(score))
+                # logging(
+                #     logger,
+                #     f"{phase}_{str(metric_name)}",
+                #     clean_nan_scores_and_avg(score),
+                #     x_axis_name,
+                #     x_axis_value,
+                # ) --> does currently not work!
 
         except Exception as e:
-            print(f"{metric_fn} cannot be computed. Received Error: {str(e)}")
+            print(f"{metric_name} cannot be computed. Received Error: {str(e)}")
 
-    print(f"allocated memory after metric computation: {torch.cuda.memory_allocated()}")
+    # print(f"allocated memory after metric computation: {torch.cuda.memory_allocated()}")
     return scores
 
 

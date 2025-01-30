@@ -1,0 +1,9 @@
+metric_fns_config:
+  ClassWiseDiceMetric:
+    include_background: False
+    reduction: mean
+    num_classes: 4
+    ignore_empty: True
+  BettiNumberMetric:
+    connectivity: 2
+    include_background: False

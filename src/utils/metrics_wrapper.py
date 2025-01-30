@@ -3,10 +3,69 @@ import torch
 import logging
 from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
+from monai.networks.utils import one_hot
+
 import numpy as np
 
 
 logger = logging.getLogger(__name__)
+
+
+class ClassWiseDiceMetric(monai.metrics.DiceMetric):
+    num_classes: int = None
+
+    def __init__(self, **kwargs):
+        if "num_classes" not in kwargs:
+            raise ValueError(
+                "num_classes must be specified for the metric class 'ClassWiseDiceMetric'"
+            )
+
+        self.num_classes = kwargs.get("num_classes", None)
+        del kwargs["num_classes"]
+        self.logging_names = [f"dice_class_{i}" for i in range(1, self.num_classes)]
+
+        if not "include_background" in kwargs or kwargs["include_background"]:
+            self.logging_names.insert(0, "dice_background")
+
+        self.logging_names.append("DiceMetric")  # mean
+
+        super().__init__(**kwargs)
+
+    def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
+
+        scores = super().__call__(
+            one_hot(y_pred, num_classes=self.num_classes),
+            one_hot(y, num_classes=self.num_classes),
+        )
+
+        metric_list = [scores[:, i] for i in range(len(self.logging_names) - 1)]
+        if self.ignore_empty:
+            metric_list.append(self.average_over_classes_ignore_nan(scores))
+        else:
+            metric_list.append(scores.mean(dim=1))
+        return metric_list
+
+    def average_over_classes_ignore_nan(self, scores: torch.Tensor):
+        not_nan_map = ~torch.isnan(scores)
+        scores = torch.where(not_nan_map, scores, 0)
+
+        return torch.sum(scores, dim=1) / not_nan_map.sum(dim=1)
+
+
+# class DiceMetric(monai.metrics.DiceMetric):
+#     num_classes: int = None
+
+#     def __init__(self, **kwargs):
+#         self.num_classes = kwargs.get("num_classes", None)
+#         super().__init__(**kwargs)
+
+#     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
+#         scores = super().__call__(
+#             one_hot(y_pred, num_classes=self.num_classes),
+#             one_hot(y, num_classes=self.num_classes),
+#         )
+#         scores_over_samples = torch.mean(scores, dim=1)
+#         return scores_over_samples
 
 
 class DiceMetric(monai.metrics.DiceMetric):
@@ -18,7 +77,7 @@ class DiceMetric(monai.metrics.DiceMetric):
 
 
 class HausdorffDistanceMetric2(monai.metrics.HausdorffDistanceMetric):
-    num_classes: int = None
+    num_classes: int
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
