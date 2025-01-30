@@ -234,3 +234,12 @@ class EnsembleConfig:
     repetitions: list[int]
     seed: int
     wandb_tags: list[str]
+
+
+class ReproduceConfig:
+    wandb_username: str
+    wandb_project: str
+    run_id: str
+    seed: int
+    wandb_tags: list[str]
+    metrics: MetricsConfig
