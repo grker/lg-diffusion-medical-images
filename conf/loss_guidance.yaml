@@ -6,5 +6,5 @@ wandb_project: difseg
 run_id: 29bjivsr
 seed: 42
 wandb_tags: [loss_guidance]
-test_batch_size: 4
+test_batch_size: 32
 repetitions: [1]

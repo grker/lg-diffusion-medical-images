@@ -1,5 +1,5 @@
 max_epochs: 40
 enable_progress_bar: False
 accelerator: gpu
-argmax_metric: val_DiceMetric
+argmax_metric: val_dice_class_1
 argmax_mode: max
