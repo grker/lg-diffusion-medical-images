@@ -68,5 +68,7 @@ cd ${DIRECTORY}
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-python src/main.py project_name=unet_seg validation_period=1 trainer.max_epochs=3 dataloader.batch_size=64 dataloader.val_batch_size=128 diffusion=sample_diffusion dataset/mask_transformer=acdc_multi diffusion.repetitions=1 dataset.mask_transformer.train_switch=False 'wandb_tags=[debug]'
+# project_name=unet_seg validation_period=1 trainer.max_epochs=300 dataloader.batch_size=64 dataloader.val_batch_size=128 diffusion=sample_diffusion dataset/mask_transformer=acdc_multi diffusion.repetitions=1 dataset.mask_transformer.train_switch=False 
+
+python src/main.py project_name=unet_seg validation_period=1 trainer.max_epochs=50 dataloader.batch_size=64 dataloader.val_batch_size=128 diffusion=sample_diffusion dataset/mask_transformer=acdc_multi diffusion.repetitions=1 dataset.mask_transformer.train_switch=False 'wandb_tags=[class_wise_metric, unet_seg]' metrics=class_wise_dice_metric
 # python main.py trainer.max_epochs=100 dataloader.batch_size=64 dataloader.val_batch_size=64 dataset/mask_transformer=acdc_multi
