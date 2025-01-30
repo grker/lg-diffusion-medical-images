@@ -1,4 +1,3 @@
-
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -12,25 +11,28 @@ from omegaconf import open_dict
 from utils.mask_transformer import BaseMaskMapping
 
 
-
 class UnetSegmentation(BaseSegmentation):
     def __init__(self, config: SegmentationConfig):
         super().__init__(config)
 
-    def create_seg_model_args(self, mask_transformer: BaseMaskMapping, num_classes: int) -> dict:
+    def create_seg_model_args(
+        self, mask_transformer: BaseMaskMapping, num_classes: int
+    ) -> dict:
         return {
             "mask_transformer": mask_transformer,
             "model": self.create_model(),
             "metrics": self.create_metrics_fn(num_classes),
-            "loss_fn": self.create_loss(),
+            "loss": self.create_loss(),
         }
 
-    def create_segmentation_model(self, mask_transformer: BaseMaskMapping, num_classes: int) -> pl.LightningModule:
+    def create_segmentation_model(
+        self, mask_transformer: BaseMaskMapping, num_classes: int
+    ) -> pl.LightningModule:
         model = self.create_model()
         metrics = self.create_metrics_fn(num_classes)
         loss = self.create_loss()
         return UnetSegmentationModel(model, metrics, mask_transformer, loss)
- 
+
     def create_model(self):
         from monai.networks.nets import BasicUNet
 
@@ -41,20 +43,20 @@ class UnetSegmentation(BaseSegmentation):
             "features": self.config.model.features,
             "dropout": self.config.model.dropout,
         }
-        
+
         return BasicUNet(**unet_config)
-    
-    def initialize(self, test: bool=False):
+
+    def initialize(self, test: bool = False):
         dataset, dataloader = self.create_dataset_dataloader()
         train_loader, val_loader, test_loader = dataloader
 
-        if hasattr(dataset, 'mask_transformer'):
-            mask_transformer = getattr(dataset, 'mask_transformer')
+        if hasattr(dataset, "mask_transformer"):
+            mask_transformer = getattr(dataset, "mask_transformer")
             output_channels = mask_transformer.get_num_train_channels()
             num_classes = mask_transformer.get_num_classes()
         else:
             raise AttributeError("No Mask Transformer is specified!")
-        
+
         with open_dict(self.config.model):
             self.config.model.out_channels = output_channels
 
@@ -63,12 +65,15 @@ class UnetSegmentation(BaseSegmentation):
         if test:
             return self.lightning_module(), test_loader, model_args
         else:
-            return self.create_segmentation_model(**model_args), train_loader, val_loader, test_loader
-    
+            return (
+                self.lightning_module()(**model_args),
+                train_loader,
+                val_loader,
+                test_loader,
+            )
 
     def lightning_module(self):
         return UnetSegmentationModel
-
 
 
 class UnetSegmentationModel(pl.LightningModule):
@@ -78,11 +83,17 @@ class UnetSegmentationModel(pl.LightningModule):
     mask_transformer: BaseMaskMapping
     num_classes: int
 
-    def __init__(self, model: nn.Module, metrics: dict, mask_transformer: BaseMaskMapping, loss_fn: torch.nn.Module):
+    def __init__(
+        self,
+        model: nn.Module,
+        metrics: dict,
+        mask_transformer: BaseMaskMapping,
+        loss: torch.nn.Module,
+    ):
         super(UnetSegmentationModel, self).__init__()
         self.model = model
         self.metrics = metrics
-        self.loss_fn = loss_fn
+        self.loss_fn = loss
         self.mask_transformer = mask_transformer
         self.num_classes = mask_transformer.get_num_classes()
 
@@ -97,20 +108,29 @@ class UnetSegmentationModel(pl.LightningModule):
         print(f"masks: {masks.shape}")
 
         loss = self.loss_fn(pred_masks, training_mask)
-        self.log('train_loss', loss)
+        self.log("train_loss", loss)
         return loss
-    
+
     def val_test_step(self, batch, batch_idx, phase):
         images, gt_masks, _ = unpack_batch(batch)
         pred_masks = self.model(images)
-        
+
         pred_masks = pred_masks.unsqueeze(0)
         logits = self.mask_transformer.get_logits(pred_masks)
         # seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
         seg_mask = self.mask_transformer.get_segmentation(logits)
 
         compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
-        visualize_segmentation(images, gt_masks, seg_mask, pred_masks, phase, self.mask_transformer.gt_mapping_for_visualization(), batch_idx, self.num_classes)
+        visualize_segmentation(
+            images,
+            gt_masks,
+            seg_mask,
+            pred_masks,
+            phase,
+            self.mask_transformer.gt_mapping_for_visualization(),
+            batch_idx,
+            self.num_classes,
+        )
 
         return 0
 
@@ -122,4 +142,3 @@ class UnetSegmentationModel(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.model.parameters(), lr=0.001)
-    
