@@ -75,8 +75,6 @@ def main(config: ReproduceConfig):
 
     old_config.metrics = config.metrics
 
-    print(f"old config metrics: {old_config.metrics}")
-
     segmentor = create_segmentor(old_config)
     seg_model, train_loader, val_loader, test_loader = segmentor.initialize()
 
