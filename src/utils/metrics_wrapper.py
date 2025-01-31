@@ -20,9 +20,9 @@ class ClassWiseDiceMetric(monai.metrics.DiceMetric):
                 "num_classes must be specified for the metric class 'ClassWiseDiceMetric'"
             )
 
-        self.num_classes = kwargs.get("num_classes", None)
+        num_classes = kwargs.get("num_classes", None)
         del kwargs["num_classes"]
-        self.logging_names = [f"dice_class_{i}" for i in range(1, self.num_classes)]
+        self.logging_names = [f"dice_class_{i}" for i in range(1, num_classes)]
 
         if not "include_background" in kwargs or kwargs["include_background"]:
             self.logging_names.insert(0, "dice_background")
@@ -31,8 +31,9 @@ class ClassWiseDiceMetric(monai.metrics.DiceMetric):
 
         super().__init__(**kwargs)
 
-    def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
+        self.num_classes = num_classes
 
+    def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
         scores = super().__call__(
             one_hot(y_pred, num_classes=self.num_classes),
             one_hot(y, num_classes=self.num_classes),

@@ -52,7 +52,6 @@ def compute_and_log_metrics(
     for metric_name, metric_fn in metric_fns.items():
         try:
             score = metric_fn(seg_mask, gt)
-            print(f"score of {metric_name}: {score}")
             if (
                 hasattr(metric_fn, "logging_names")
                 and metric_fn.logging_names is not None
