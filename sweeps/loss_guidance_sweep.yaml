@@ -1,0 +1,25 @@
+project: difseg
+program: src/loss_guidance.py
+name: loss_guidance_sweep
+method: grid
+metric:
+  goal: maximize
+  name: test_betti_number_0
+
+parameters:
+  run_id: 
+    values: [tzq25dcn, u5zml22p, vf56q7oj, 29bjivsr]
+  loss_guidance.starting_step:
+    values: [5, 10, 20, 30, 50]
+  loss_guidance.gamma:
+    values: [0.1, 1, 10, 100]
+  loss_guidance.pseudo_gt_generator.name:
+    values: [PGTSegGeneratorDim0]
+
+
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args_no_hyphens}
