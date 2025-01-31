@@ -125,16 +125,37 @@ class BettiNumberMetric:
     include_background: bool
     background_label: int = 0  # background label has to be 0!
     logging_names: list[str] = ["betti_number_0", "betti_number_1"]
+    class_wise: bool = False
 
     def __init__(self, **kwargs):
         self.connectivity = kwargs.get("connectivity", 1)
         self.num_classes = kwargs.get("num_classes", 2)
         self.include_background = kwargs.get("include_background", False)
 
+        self.class_wise = kwargs.get("class_wise", False)
+        if self.class_wise:
+            logging_names_0 = [
+                f"betti_number_0_class_{i}" for i in range(self.num_classes)
+            ]
+            logging_names_0.append("betti_number_0")
+
+            logging_names_1 = [
+                f"betti_number_1_class_{i}" for i in range(self.num_classes)
+            ]
+            logging_names_1.append("betti_number_1")
+
+            self.logging_names = logging_names_0 + logging_names_1
+
+            print(f"logging_names: {self.logging_names}")
+
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
-        return self.betti_number_0_1(y_pred, y)
+        if self.class_wise:
+            return self.betti_number_0_1_class_wise(y_pred, y)
+        else:
+            return self.betti_number_0_1(y_pred, y)
 
     def betti_number_0_1(self, y_pred: torch.Tensor, y: torch.Tensor):
+
         y_pred_np = y_pred.detach().cpu().numpy()
         y_np = y.detach().cpu().numpy()
 
@@ -157,6 +178,36 @@ class BettiNumberMetric:
                 betti_errors_1[idx] = 0.0
 
         return betti_errors_0, betti_errors_1
+
+    def betti_number_0_1_class_wise(self, y_pred: torch.Tensor, y: torch.Tensor):
+        scores = (
+            torch.ones((y_pred.shape[0], len(self.logging_names)), device="cpu") * -1
+        )
+
+        y_pred_np = y_pred.detach().cpu().numpy()
+        y_np = y.detach().cpu().numpy()
+
+        betti_errors_0 = torch.empty((y_pred_np.shape[0],), device="cpu")
+        betti_errors_1 = torch.empty((y_pred_np.shape[0],), device="cpu")
+        for idx in range(y_pred_np.shape[0]):
+            err_0 = 0.0
+            err_1 = 0.0
+            labels = self.extract_labels(y_pred_np[idx], y_np[idx])
+            for label in labels:
+                b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], label)
+                err_0 += b0
+                err_1 += b1
+
+                scores[idx, label] = b0
+                scores[idx, label + self.num_classes + 1] = b1
+
+            if len(labels) > 0:
+                scores[idx, self.num_classes] = err_0 / len(labels)
+                scores[idx, -1] = err_1 / len(labels)
+
+        scores = torch.where(scores != -1, scores, torch.nan)
+        print(f"scores shape: {scores.shape}")
+        return scores
 
     def betti_number_per_label(self, pred: np.ndarray, gt: np.ndarray, label: int):
         label_pred = (pred == label).squeeze(0)

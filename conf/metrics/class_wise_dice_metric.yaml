@@ -7,3 +7,5 @@ metric_fns_config:
   BettiNumberMetric:
     connectivity: 2
     include_background: False
+    num_classes: 4
+    class_wise: True
