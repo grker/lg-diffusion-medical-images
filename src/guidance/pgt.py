@@ -253,13 +253,14 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
         super().__init__(pgt_config)
 
         if torch.cuda.is_available():
-            self.device = torch.device("cuda")
+            self.device = torch.device("cuda:0")
         else:
             self.device = torch.device("cpu")
 
         self.base_prob = 0.1
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
+
         if x_softmax.device != self.device:
             print(f"moving x_softmax to device: {self.device}")
             x_softmax = x_softmax.to(self.device)

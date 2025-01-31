@@ -500,7 +500,7 @@ class DDPM_DPS(DDPM):
         )
 
         pseudo_gt = self.pgt.pseudo_gt(
-            torch.softmax(noisy_mask, dim=1).detach(), t, batch_idx
+            torch.softmax(model_output, dim=1).detach(), t, batch_idx
         )
         loss = self.topology_loss(model_output, pseudo_gt)
         loss.backward()
@@ -522,6 +522,7 @@ class DDPM_DPS(DDPM):
 
         model_output = model_output.detach().cpu()
         noisy_mask = noisy_mask.detach().cpu()
+
         return new_noisy_mask
 
     @torch.inference_mode(False)

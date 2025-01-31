@@ -224,6 +224,7 @@ class LossGuidanceInferenceConfig:
     loss_guidance: LossGuidanceConfig
     test_batch_size: int
     repetitions: list[int]
+    metrics: MetricsConfig | None = None
 
 
 # Ensemble Config (tests an ensemble of a trained model):
