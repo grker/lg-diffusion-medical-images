@@ -11,7 +11,7 @@
 USERNAME=$USER
 PROJECT_NAME=master_thesis
 DIRECTORY=/data/${USERNAME}/${PROJECT_NAME}
-MAMBA_ENVIRONMENT=master_thesis
+MAMBA_ENVIRONMENT=dmiise
 
 mkdir -p ${DIRECTORY}/jobs
 
