@@ -78,26 +78,8 @@ def main(config: LossGuidanceInferenceConfig):
         print("cuda not available, using cpu")
         old_config.trainer.accelerator = "cpu"
 
-    # initialize segmentor on test mode
-
-    # segmentor = create_segmentor(old_config, loss_guided=True)
-    # seg_model, train_loader, val_loader, test_loader = segmentor.initialize(test=False)
-
-    # # load best model of the run
-    # model_artifact = wandb.use_artifact(f"model-{config.run_id}:best", type="model")
-    # model_artifact_dir = model_artifact.download()
-
-    # state_dict = torch.load(
-    #     os.path.join(model_artifact_dir, "model.ckpt"),
-    #     map_location=old_config.trainer.accelerator,
-    #     weights_only=False,
-    # )["state_dict"]
-
-    # state_dict = {k: v for k, v in state_dict.items() if "loss_fn" not in k}
-    # seg_model.load_state_dict(state_dict)
-
-    # old_config.dataloader.validation_ratio = 0.2
-    # old_config.dataloader.train_ratio = 0.75
+    if config.metrics is not None:
+        old_config.metrics = config.metrics
 
     segmentor = create_segmentor(old_config, loss_guided=True)
     seg_model_class, test_loader, model_args = segmentor.initialize(test=True)
