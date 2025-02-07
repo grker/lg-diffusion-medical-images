@@ -43,6 +43,7 @@ class DmiiseSegmentation(BaseSegmentation):
                 )
             else:
                 raise ValueError("No loss_guidance config has been specified!")
+
         return DDPM(
             model,
             self.config.diffusion,

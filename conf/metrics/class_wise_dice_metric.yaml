@@ -9,3 +9,6 @@ metric_fns_config:
     include_background: False
     num_classes: 4
     class_wise: True
+  BettiNumberMetricOld:
+    connectivity: 2
+    include_background: False

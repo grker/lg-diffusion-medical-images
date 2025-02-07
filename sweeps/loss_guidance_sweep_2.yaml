@@ -1,6 +1,6 @@
 project: difseg
 program: src/loss_guidance.py
-name: loss_guidance_sweep
+name: loss_guidance_sweep_3
 method: grid
 metric:
   goal: maximize
@@ -8,11 +8,11 @@ metric:
 
 parameters:
   run_id: 
-    values: [tzq25dcn, 29bjivsr]
+    values: [29bjivsr]
   loss_guidance.starting_step:
-    values: [10, 20, 30]
+    values: [20, 30, 35, 40, 50]
   loss_guidance.gamma:
-    values: [0.1, 1, 10, 100]
+    values: [50, 100, 500, 750, 1000, 1500]
   loss_guidance.pseudo_gt_generator.name:
     values: [PGTSegGeneratorDim0]
 

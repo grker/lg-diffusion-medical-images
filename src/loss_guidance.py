@@ -58,6 +58,7 @@ def main(config: LossGuidanceInferenceConfig):
     # initialize wandb api
     api = Api()
 
+    print(f"using run id: {config.run_id}")
     # load run and its config
     old_run = api.run(f"{config.wandb_username}/{config.wandb_project}/{config.run_id}")
     old_config = OmegaConf.create(old_run.config)
