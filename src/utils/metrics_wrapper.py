@@ -159,8 +159,8 @@ class BettiNumberMetric:
         y_pred_np = y_pred.detach().cpu().numpy()
         y_np = y.detach().cpu().numpy()
 
-        betti_errors_0 = torch.empty((y_pred_np.shape[0],), device="cpu")
-        betti_errors_1 = torch.empty((y_pred_np.shape[0],), device="cpu")
+        betti_errors_0 = torch.zeros((y_pred_np.shape[0],), device="cpu")
+        betti_errors_1 = torch.zeros((y_pred_np.shape[0],), device="cpu")
         for idx in range(y_pred_np.shape[0]):
             err_0 = 0.0
             err_1 = 0.0
@@ -180,15 +180,11 @@ class BettiNumberMetric:
         return betti_errors_0, betti_errors_1
 
     def betti_number_0_1_class_wise(self, y_pred: torch.Tensor, y: torch.Tensor):
-        scores = (
-            torch.ones((y_pred.shape[0], len(self.logging_names)), device="cpu") * -1
-        )
+        scores = torch.zeros((len(self.logging_names), y_pred.shape[0]), device="cpu")
 
         y_pred_np = y_pred.detach().cpu().numpy()
         y_np = y.detach().cpu().numpy()
 
-        betti_errors_0 = torch.empty((y_pred_np.shape[0],), device="cpu")
-        betti_errors_1 = torch.empty((y_pred_np.shape[0],), device="cpu")
         for idx in range(y_pred_np.shape[0]):
             err_0 = 0.0
             err_1 = 0.0
@@ -198,16 +194,118 @@ class BettiNumberMetric:
                 err_0 += b0
                 err_1 += b1
 
-                scores[idx, label] = b0
-                scores[idx, label + self.num_classes + 1] = b1
+                scores[label, idx] = b0
+                scores[label + self.num_classes + 1, idx] = b1
 
             if len(labels) > 0:
-                scores[idx, self.num_classes] = err_0 / len(labels)
-                scores[idx, -1] = err_1 / len(labels)
+                scores[self.num_classes, idx] = err_0 / len(labels)
+                scores[-1, idx] = err_1 / len(labels)
+            else:
+                scores[self.num_classes, idx] = 0.0
+                scores[-1, idx] = 0.0
 
-        scores = torch.where(scores != -1, scores, torch.nan)
-        print(f"scores shape: {scores.shape}")
         return scores
+
+    def betti_number_per_label(self, pred: np.ndarray, gt: np.ndarray, label: int):
+        label_pred = (pred == label).squeeze(0)
+        label_gt = (gt == label).squeeze(0)
+
+        if not np.any(label_gt):
+            b0_gt, b1_gt = 0, 0
+        else:
+            b0_gt, b1_gt = self.betti_numbers_image(label_gt)
+
+        if not np.any(label_pred):
+            b0_pred, b1_pred = 0, 0
+        else:
+            b0_pred, b1_pred = self.betti_numbers_image(label_pred)
+
+        return abs(b0_gt - b0_pred), abs(b1_gt - b1_pred)
+
+    def betti_numbers_image(self, image: np.ndarray):
+        """
+        Computes the betti number 0 and betti number 1 for a single image.
+        :param image: 2D numpy array
+        :return: (int, int): tuple of betti number 0 and betti number 1
+        """
+        b0 = self.connected_components(image)
+        skeleton = skeletonize(image)
+        regions = regionprops(label(skeleton))
+        if regions:
+            euler_characteristic = regions[0].euler_number
+        else:
+            euler_characteristic = 0
+
+        return b0, b0 - euler_characteristic
+
+    def extract_labels(self, y_pred: np.ndarray, y: np.ndarray):
+        """
+        Adapted from https://github.com/CoWBenchmark/TopCoW_Eval_Metrics/blob/master/metric_functions.py#L18.
+        :param y_pred: 2D numpy array
+        :param y: 2D numpy array
+        :return: list[int]: list of labels appearing in at least one of the two images
+        """
+        labels_gt = np.unique(y)
+        labels_pred = np.unique(y_pred)
+        labels = list(set().union(labels_gt, labels_pred))
+        labels = [int(x) for x in labels]
+        if not self.include_background and self.background_label in labels:
+            labels.remove(self.background_label)
+        return labels
+
+    def connected_components(self, img: np.ndarray):
+        """
+        Computes the number of connected components in a 2D image.
+        :param img: 2D numpy array
+        :return: int: number of connected components
+        """
+        assert img.ndim == 2, "Image must be 2D"
+        assert (
+            img.ndim >= self.connectivity
+        ), "Connectivity must be less than or equal to the dimension of the image"
+
+        _, num_components = label(img, connectivity=self.connectivity, return_num=True)
+        return num_components
+
+
+class BettiNumberMetricOld:
+    connectivity: int
+    num_classes: int
+    include_background: bool
+    background_label: int = 0  # background label has to be 0!
+    logging_names: list[str] = ["betti_number_0_old", "betti_number_1_old"]
+
+    def __init__(self, **kwargs):
+        self.connectivity = kwargs.get("connectivity", 1)
+        self.num_classes = kwargs.get("num_classes", 2)
+        self.include_background = kwargs.get("include_background", False)
+
+    def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
+        return self.betti_number_0_1(y_pred, y)
+
+    def betti_number_0_1(self, y_pred: torch.Tensor, y: torch.Tensor):
+        y_pred_np = y_pred.detach().cpu().numpy()
+        y_np = y.detach().cpu().numpy()
+
+        betti_errors_0 = torch.zeros((y_pred_np.shape[0],), device="cpu")
+        betti_errors_1 = torch.zeros((y_pred_np.shape[0],), device="cpu")
+        for idx in range(y_pred_np.shape[0]):
+            err_0 = 0.0
+            err_1 = 0.0
+            labels = self.extract_labels(y_pred_np[idx], y_np[idx])
+            for label in labels:
+                b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], label)
+                err_0 += b0
+                err_1 += b1
+
+            if len(labels) > 0:
+                betti_errors_0[idx] = err_0 / len(labels)
+                betti_errors_1[idx] = err_1 / len(labels)
+            else:
+                betti_errors_0[idx] = 0.0
+                betti_errors_1[idx] = 0.0
+
+        return betti_errors_0, betti_errors_1
 
     def betti_number_per_label(self, pred: np.ndarray, gt: np.ndarray, label: int):
         label_pred = (pred == label).squeeze(0)
@@ -264,17 +362,16 @@ class BettiNumberMetric:
         :param img: 2D numpy array
         :return: int: number of connected components
         """
-        assert (img.ndim == 2, "Image must be 2D")
+        assert img.ndim == 2, "Image must be 2D"
         assert (
-            img.ndim >= self.connectivity,
-            "Connectivity must be less than or equal to the dimension of the image",
-        )
+            img.ndim >= self.connectivity
+        ), "Connectivity must be less than or equal to the dimension of the image"
 
         _, num_components = label(img, connectivity=self.connectivity, return_num=True)
         return num_components
 
 
-class BettiNumberMetric_0(BettiNumberMetric):
+class BettiNumberMetric_0(BettiNumberMetricOld):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.logging_names = ["betti_number_0"]
@@ -284,7 +381,7 @@ class BettiNumberMetric_0(BettiNumberMetric):
         return error
 
 
-class BettiNumberMetric_1(BettiNumberMetric):
+class BettiNumberMetric_1(BettiNumberMetricOld):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.logging_names = ["betti_number_1"]
