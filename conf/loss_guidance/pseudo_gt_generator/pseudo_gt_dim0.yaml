@@ -19,3 +19,4 @@ analysis:
   num_bins: 10
   poly_degree: 5
   minimal_threshold: 0.2
+base_prob: 0.1

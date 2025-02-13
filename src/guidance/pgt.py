@@ -103,14 +103,15 @@ def likelyhood_temperature_scaling(
     returns:
         torch.Tensor, shape (batch_size, num_classes, height, width)
     """
-    # second part does not make sense
+    # second part does not make sense !!
     x_softmax = x_softmax / (1 - likelyhood) * alpha + torch.softmax(
         x_softmax, dim=1
     ) * (1 - alpha)
-    return x_softmax / torch.sum(x_softmax, dim=1)
 
+    print(f"x_softmax shape: {x_softmax.shape}", flush=True)
+    print(f"x_softmax sum shape: {torch.sum(x_softmax, dim=1).shape}", flush=True)
+    return x_softmax / torch.sum(x_softmax, dim=1, keepdim=True)
 
-class AdjustProbs:
     def __init__(
         self,
         alpha_smoothing: float,
@@ -185,6 +186,7 @@ class PseudoGTGeneratorBase:
             pgt_config.topo_features, pgt_config.num_classes
         )
         self.num_classes = pgt_config.num_classes
+        self.base_prob = pgt_config.base_prob
 
     def check_topofeatures(self, topo_features: dict, num_classes: int):
         """
@@ -234,7 +236,7 @@ class PseudoGTGeneratorBase:
 
         return topo_features
 
-    def pseudo_gt(self, x_softmax: torch.Tensor):
+    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
         """
         Generate a pseudo ground truth for the given softmax output.
         params:
@@ -257,12 +259,9 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
         else:
             self.device = torch.device("cpu")
 
-        self.base_prob = 0.1
-
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
 
         if x_softmax.device != self.device:
-            print(f"moving x_softmax to device: {self.device}")
             x_softmax = x_softmax.to(self.device)
 
         prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)
@@ -272,9 +271,10 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
 
         for sample_idx in range(prediction.shape[0]):
             for class_idx in range(self.num_classes):
-                binary_component_map[sample_idx, class_idx] = self.component_map(
+                component_map = self.component_map(
                     prediction[sample_idx, class_idx], self.topo_features[class_idx][0]
                 )
+                binary_component_map[sample_idx, class_idx] = component_map.squeeze(0)
 
         # from utils.visualize import visualize_component_map
 
@@ -297,7 +297,7 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
             prediction: torch.Tensor, shape (height, width)
             num_components: int
         returns:
-            torch.Tensor, shape (height, width)
+            torch.Tensor, shape (1, height, width)
         """
         width, height = prediction.shape[0], prediction.shape[1]
         prediction = prediction.unsqueeze(0)
@@ -350,6 +350,156 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
         return binary_map
 
 
+class PseudoGTCycleBased(PseudoGTGeneratorBase):
+    def __init__(self, pgt_config: PseudoGTConfig):
+        super().__init__(pgt_config)
+
+    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
+        prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)
+        prediction = torch.zeros_like(x_softmax).scatter_(1, prediction, 1)
+
+        binary_component_map = torch.zeros_like(prediction)
+
+        for sample_idx in range(prediction.shape[0]):
+            for class_idx in range(self.num_classes):
+                holes_map, holes = self.holes_map(
+                    prediction[sample_idx, class_idx],
+                )
+
+                comp_map = component_map(
+                    prediction[sample_idx, class_idx], self.topo_features[class_idx][0]
+                )
+
+                binary_component_map[sample_idx, class_idx] = (
+                    self.combined_comp_holes_map(
+                        holes_map,
+                        comp_map,
+                        holes,
+                        self.topo_features[class_idx][1],
+                    )
+                )
+
+        from utils.visualize import visualize_component_map
+
+        if t % 10 == 0 or t < 4:
+            visualize_component_map(
+                binary_component_map[0].unsqueeze(0),
+                f"binary_component_map_timestep_{t}",
+                batch_idx=batch_idx,
+                merged=False,
+            )
+
+        likelihood = binary_component_map * x_softmax
+        likelihood = torch.where(likelihood > 0, likelihood, self.base_prob)
+
+        return likelihood
+
+    def holes_map(self, class_prediction: torch.Tensor):
+        """
+        Generate a map containing the holes for the given prediction. Pixels belonging to the same holes are assigned the same value. Background is 0.
+        params:
+            class_prediction: torch.Tensor, shape (height, width), binary map --> 1: pixel belonging to class, 0: pixel does belong to another class
+            num_components: int
+        returns:
+            torch.Tensor, shape (height, width)
+        """
+
+        class_prediction = class_prediction.unsqueeze(0)
+        reversed_map = class_prediction != 1
+        width, height = class_prediction.shape[1], class_prediction.shape[2]
+
+        holes_map = (
+            torch.arange(width * height, device=class_prediction.device)
+            .reshape(height, width)
+            .unsqueeze(0)
+            * reversed_map
+        ).to(dtype=torch.float32)
+
+        for i in range(2 * max(width, height)):
+            holes_map = (
+                torch.max_pool2d(holes_map, kernel_size=3, stride=1, padding=1)
+                * reversed_map
+            )
+
+        border = torch.cat(
+            (
+                holes_map[:, 0, :],
+                holes_map[:, -1, :],
+                holes_map[:, :, 0],
+                holes_map[:, :, -1],
+            ),
+            dim=1,
+        )
+
+        largest_border_value = torch.max(border)
+        holes = []
+
+        # eliminate the incorrect holes. Incorrect holes are the components that have border pixels belonging to it.
+        while largest_border_value > 0:
+            holes_map = torch.where(holes_map == largest_border_value, 0, holes_map)
+            border = torch.where(border == largest_border_value, 0, border)
+            largest_border_value = torch.max(border)
+
+        # iterate over the correct holes
+        largest_value = torch.max(holes_map)
+        holes_map_copy = holes_map.clone()
+
+        while largest_value > 0:
+            size = torch.sum(holes_map_copy == largest_value)
+            holes.append((largest_value, size))
+            holes_map_copy = torch.where(
+                holes_map_copy == largest_value, 0, holes_map_copy
+            )
+            largest_value = torch.max(holes_map_copy)
+
+        holes.sort(key=lambda x: x[1], reverse=True)
+
+        return holes_map, holes
+
+    def combined_comp_holes_map(
+        self,
+        holes_map: torch.Tensor,
+        component_map: torch.Tensor,
+        holes: list[tuple[int, int]],
+        num_holes: int,
+    ):
+        component_map_copy = component_map.clone()
+        max_value_hole = torch.max(holes_map)
+        component_map = component_map * (max_value_hole + 1)
+        component_map = component_map + holes_map
+
+        binary_map = component_map > 0
+
+        width, height = component_map.shape[1], component_map.shape[2]
+
+        for i in range(2 * max(width, height)):
+            component_map = (
+                torch.max_pool2d(component_map, kernel_size=3, stride=1, padding=1)
+                * binary_map
+            )
+
+        holes_within_component = (component_map == (max_value_hole + 1)) * holes_map
+
+        good_holes = 0
+        idx = 0
+
+        while good_holes < num_holes and idx < len(holes):
+            hole_value = holes[idx][0]
+
+            if hole_value in holes_within_component:
+                good_holes += 1
+
+                holes_within_component = torch.where(
+                    holes_within_component == hole_value, 0, holes_within_component
+                )
+
+            idx += 1
+
+        holes_within_component = holes_within_component > 0
+
+        return component_map_copy + holes_within_component
+
+
 class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
 
     def __init__(self, pgt_config: PseudoGTDim0_CompsConfig):
@@ -364,7 +514,9 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
         super().__init__(pgt_config)
         print(f"pgt gt object created with config: {pgt_config}")
 
-    def pseudo_gt(self, x_softmax: torch.Tensor, no_scaling: bool = False):
+    def pseudo_gt(
+        self, x_softmax: torch.Tensor, t: int, batch_idx: int, no_scaling: bool = False
+    ):
         """
         Generate a pseudo ground truth for the given softmax output.
         params:
@@ -426,3 +578,63 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
             likelihood = torch.max(likelihood, component_map)
 
         return likelihood
+
+
+def component_map(prediction: torch.Tensor, num_components: int):
+    """
+    Generate a component map for the given prediction. Pixels belonging to the same component are assigned the same value. Background is 0.
+    params:
+        prediction: torch.Tensor, shape (height, width)
+        num_components: int
+    returns:
+        torch.Tensor, shape (height, width)
+    """
+    width, height = prediction.shape[0], prediction.shape[1]
+    prediction = prediction.unsqueeze(0)
+    component_map = (
+        torch.arange(width * height, device=prediction.device)
+        .reshape(height, width)
+        .unsqueeze(0)
+        * prediction
+    )
+
+    for i in range(2 * max(width, height)):
+        component_map = (
+            torch.max_pool2d(component_map, kernel_size=3, stride=1, padding=1)
+            * prediction
+        )
+
+    filtered_component_map = component_map
+
+    largest_value_in_map = torch.max(component_map)
+    largest_component = -1
+    largest_component_size = 0
+    components = []
+
+    while largest_value_in_map > 0:
+        component = filtered_component_map == largest_value_in_map
+        component_size = torch.sum(component)
+
+        if component_size > largest_component_size:
+            largest_component_size = component_size
+            largest_component = largest_value_in_map
+
+        components.append((largest_value_in_map, component_size))
+
+        filtered_component_map = torch.where(
+            component_map == largest_value_in_map,
+            0,
+            filtered_component_map,
+        )
+
+        largest_value_in_map = torch.max(filtered_component_map)
+
+    components.sort(key=lambda x: x[1], reverse=True)
+    num_components = min(num_components, len(components))
+    numbers = [components[i][0] for i in range(num_components)]
+
+    binary_map = torch.zeros_like(component_map, device=component_map.device)
+    for i in range(num_components):
+        binary_map = torch.add(binary_map, component_map == numbers[i])
+
+    return binary_map
