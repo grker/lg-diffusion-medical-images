@@ -409,9 +409,8 @@ def visualize_component_map(
     :param component_map: tensor of shape (batch_size, num_classes, H, W)
     :param title: str, title of the visualization
     """
-
     num_classes = component_map.shape[1]
-
+    
     if merged:
         for class_idx in range(num_classes):
             component_map[:, class_idx, :, :] = (

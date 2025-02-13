@@ -172,6 +172,7 @@ class PseudoGTConfig:
     name: str
     topo_features: dict
     num_classes: int
+    base_prob: float
     scaling_function: ScalingFunctionConfig
     analysis: AnalysisConfig
 

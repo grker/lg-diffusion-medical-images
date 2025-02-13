@@ -503,6 +503,9 @@ class DDPM_DPS(DDPM):
             torch.softmax(model_output, dim=1).detach(), t, batch_idx
         )
         loss = self.topology_loss(model_output, pseudo_gt)
+
+        if t < 6 == 0:
+            print(f"loss at timestep {t}: {loss}")
         loss.backward()
 
         with torch.no_grad():
