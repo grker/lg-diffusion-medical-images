@@ -1,5 +1,5 @@
 defaults:
-  - loss_guidance: loss_guidance_base
+  - loss_guidance: loss_guidance_seg_comp
   - metrics: class_wise_dice_metric
 
 wandb_username: difseg
@@ -7,6 +7,6 @@ wandb_project: difseg
 run_id: 29bjivsr
 seed: 42
 wandb_tags: [loss_guidance]
-test_batch_size: 32
+test_batch_size: 16
 repetitions: [1]
 

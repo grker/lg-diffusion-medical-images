@@ -5,17 +5,19 @@ import random
 import wandb
 
 import torch.nn as nn
-from torch.utils.data import Dataset
 
+from torch.utils.data import Dataset
 from tqdm import tqdm
 from diffusers.schedulers import DDPMScheduler
 from diffusers.optimization import get_cosine_schedule_with_warmup
 
+
+import guidance.loss_guider
 from utils.hydra_config import (
     DiffusionConfig,
     OptimizerConfig,
     LossGuidedDiffusionConfig,
-    PseudoGTConfig,
+    LossGuidanceConfig,
 )
 from utils.visualize import (
     visualize_segmentation,
@@ -29,8 +31,7 @@ from utils.metrics import (
 )
 from utils.mask_transformer import BaseMaskMapping
 from utils.helper import unpack_batch, log_cuda_memory
-
-from guidance.pgt import PseudoGTGeneratorBase
+from guidance.loss_guider import LossGuider
 
 
 def scheduler_factory(
@@ -352,7 +353,7 @@ class DDPM(pl.LightningModule):
 
 
 class DDPM_DPS(DDPM):
-    pgt: PseudoGTGeneratorBase
+    loss_guider: LossGuider
     starting_step: int
     gamma: float
     metrics_fn_dict: dict
@@ -371,10 +372,10 @@ class DDPM_DPS(DDPM):
             model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
         )
 
-        self.starting_step = diffusion_config.loss_guidance.starting_step
-        self.gamma = diffusion_config.loss_guidance.gamma
+        self.loss_guider = self.initialize_guider(diffusion_config.loss_guidance)
+        self.starting_step = self.loss_guider.get_starting_step()
+        self.gamma = self.loss_guider.get_gamma()
 
-        self.initialize_pgt(diffusion_config.loss_guidance.pseudo_gt_generator)
         metrics_fn_dict = generate_metrics_fn(
             diffusion_config.loss_guidance.guidance_metrics,
             self.num_classes,
@@ -385,23 +386,22 @@ class DDPM_DPS(DDPM):
             self.starting_step,
         )
 
-        self.topology_loss = nn.CrossEntropyLoss()
+    def initialize_guider(self, loss_guidance_config: LossGuidanceConfig):
+        import guidance.loss_guider
 
-    def initialize_pgt(self, pseudo_gt_generator_config: PseudoGTConfig):
-        import guidance.pgt
+        print(f"loss_guidance_config: {loss_guidance_config}")
 
-        if hasattr(guidance.pgt, pseudo_gt_generator_config.name):
-            self.pgt = getattr(guidance.pgt, pseudo_gt_generator_config.name)(
-                pseudo_gt_generator_config
+        if hasattr(guidance.loss_guider, loss_guidance_config.name):
+            return getattr(guidance.loss_guider, loss_guidance_config.name)(
+                loss_guidance_config
             )
         else:
             raise ValueError(
-                f"PseudoGTGenerator {pseudo_gt_generator_config.name} not found!"
+                f"PseudoGTGenerator {loss_guidance_config.name} not found!"
             )
 
     @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
-        # log_cuda_memory(f"before val_test_step")
         self.model.eval()
 
         images, gt_masks, gt_train_masks = unpack_batch(batch)
@@ -412,16 +412,18 @@ class DDPM_DPS(DDPM):
         for rep in range(reps):
             noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
 
+            # unguided diffusion steps
             for t in tqdm(self.scheduler.timesteps[: -self.starting_step]):
                 noisy_mask = self.unguided_step(noisy_mask, images, t)
 
-            # activate the gradient for the model
+            # activate the gradient for the model for the guided steps
             for name, param in self.model.named_parameters():
                 if not param.requires_grad:
                     param.requires_grad_(True)
 
             noisy_mask = noisy_mask.requires_grad_(True)
 
+            # guided diffusion steps
             for t in tqdm(self.scheduler.timesteps[-self.starting_step : -1]):
                 noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
 
@@ -499,15 +501,18 @@ class DDPM_DPS(DDPM):
             torch.full((num_samples,), t, device=images.device),
         )
 
-        pseudo_gt = self.pgt.pseudo_gt(
-            torch.softmax(model_output, dim=1).detach(), t, batch_idx
+        print(f"model_output requires grad: {model_output.requires_grad}")
+
+        loss = self.loss_guider.guidance_loss(
+            model_output,
+            t,
+            batch_idx,
         )
-        loss = self.topology_loss(model_output, pseudo_gt)
 
-        if t < 6 == 0:
+        if t < 10 == 0:
             print(f"loss at timestep {t}: {loss}")
-        loss.backward()
 
+        loss.backward()
         with torch.no_grad():
             noisy_mask_grads = noisy_mask.grad
             new_noisy_mask = (
@@ -541,6 +546,9 @@ class DDPM_DPS(DDPM):
                 torch.cat((noisy_mask, images), dim=1),
                 torch.full((num_samples,), t, device=images.device),
             )
+
+            # if t == 0:
+            #     return model_output
 
             noisy_mask = self.scheduler.step(
                 model_output=model_output,
@@ -598,7 +606,6 @@ class GuidanceMetric:
         computed_values = self.compute()
         for name in self.metrics_dict.keys():
             data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
-            print(f"data for table: {data}")
             table = wandb.Table(data=data, columns=["timestep", name])
 
             wandb.log({f"{name}_metric_per_timestep": table})

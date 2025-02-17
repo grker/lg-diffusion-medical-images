@@ -3,7 +3,7 @@
 #SBATCH --mail-type=NONE # mail configuration: NONE, BEGIN, END, FAIL, REQUEUE, AL
 #SBATCH --output=/data/%u/master_thesis/jobs/%j.out # where to store the output (%j is the JOBID), subdirectory "jobs" must exist
 #SBATCH --error=/data/%u/master_thesis/jobs/%j.err # where to store error messages
-#SBATCH --time=08:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
@@ -68,4 +68,6 @@ cd ${DIRECTORY}
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-python src/loss_guidance.py run_id=u5zml22p loss_guidance.starting_step=30 loss_guidance.pseudo_gt_generator.name=PGTSegGeneratorDim0 loss_guidance.gamma=100
+
+python src/loss_guidance.py run_id=29bjivsr loss_guidance=loss_guidance_seg_comp loss_guidance.starting_step=40 loss_guidance.pseudo_gt_generator.name=PseudoGTGeneratorDim0_Comps loss_guidance.pseudo_gt_generator.base_prob=0.1 loss_guidance.gamma=1500
+# python src/test.py

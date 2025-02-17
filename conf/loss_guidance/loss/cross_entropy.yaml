@@ -1,0 +1,5 @@
+loss_fns_config:
+  CrossEntropyLoss:
+    scale: 1.0
+    args: null
+log_loss_parts: False

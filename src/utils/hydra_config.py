@@ -183,10 +183,12 @@ class PseudoGTDim0_CompsConfig(PseudoGTConfig):
 
 
 class LossGuidanceConfig:
+    name: str
     gamma: float
     starting_step: int
     pseudo_gt_generator: PseudoGTConfig
     guidance_metrics: MetricsConfig
+    loss: LossConfig
 
 
 class LossGuidedDiffusionConfig(DiffusionConfig):
