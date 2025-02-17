@@ -391,7 +391,7 @@ class DDPM_DPS(DDPM):
 
         print(f"loss_guidance_config: {loss_guidance_config}")
 
-        if hasattr(guidance.loss_guider, loss_guidance_config.name):
+        if hasattr(guidance, loss_guidance_config.name):
             return getattr(guidance.loss_guider, loss_guidance_config.name)(
                 loss_guidance_config
             )
@@ -500,8 +500,6 @@ class DDPM_DPS(DDPM):
             torch.cat((noisy_mask, images), dim=1),
             torch.full((num_samples,), t, device=images.device),
         )
-
-        print(f"model_output requires grad: {model_output.requires_grad}")
 
         loss = self.loss_guider.guidance_loss(
             model_output,
