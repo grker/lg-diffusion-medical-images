@@ -44,10 +44,6 @@ def compute_and_log_metrics(
     # print(
     #     f"allocated memory before metric computation: {torch.cuda.memory_allocated()}"
     # )
-    print(f"seg_mask max: {seg_mask.max()}")
-    print(f"gt max: {gt.max()}")
-    print(f"shape seg_mask: {seg_mask.shape}")
-    print(f"shape gt: {gt.shape}")
 
     for metric_name, metric_fn in metric_fns.items():
         try:

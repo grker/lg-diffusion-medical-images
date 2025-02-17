@@ -108,8 +108,6 @@ def likelyhood_temperature_scaling(
         x_softmax, dim=1
     ) * (1 - alpha)
 
-    print(f"x_softmax shape: {x_softmax.shape}", flush=True)
-    print(f"x_softmax sum shape: {torch.sum(x_softmax, dim=1).shape}", flush=True)
     return x_softmax / torch.sum(x_softmax, dim=1, keepdim=True)
 
     def __init__(
@@ -527,16 +525,17 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
 
         device = x_softmax.device
         likelihood = torch.zeros_like(x_softmax, device=device)
+
         for sample_idx in range(x_softmax.shape[0]):
             for class_idx in range(self.num_classes):
                 topo_feature_0 = self.topo_features[class_idx][0]
                 likelihood[sample_idx, class_idx] = self.likelihood_map(
                     x_softmax[sample_idx, class_idx], topo_feature_0
                 )
-
         if no_scaling:
             return likelihood
         else:
+            scaled_version = self.scaling_function(x_softmax, likelihood)
             return self.scaling_function(x_softmax, likelihood)
 
     def likelihood_map(self, class_probs: torch.Tensor, num_components: int):
@@ -572,7 +571,7 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
             print(f"using fixed threshold of: {self.fixed_threshold}")
             threshold = self.fixed_threshold
             component_map = cp.component_map(
-                threshold, interval[0], base_prob=0.0, device=device
+                threshold, interval[0], base_prob=0.1, device=device
             )
             component_map = component_map.to(device=likelihood.device)
             likelihood = torch.max(likelihood, component_map)
