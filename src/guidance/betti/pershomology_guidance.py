@@ -4,7 +4,7 @@ from utils.hydra_config import LossGuidanceConfig
 from betti_matching.BettiMatching import CubicalPersistence
 
 from ..loss_guider_base import LossGuiderBetti
-from ..utils import likelyhood_temperature_scaling
+from ..utils import likelyhood_temperature_scaling, Birth_Death_Loss
 
 
 class PersHomologyBettiGuidance(LossGuiderBetti):
@@ -99,3 +99,35 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
             likelihood = torch.max(likelihood, component_map)
 
         return likelihood
+
+
+class Birth_Death_Guider(PersHomologyBettiGuidance):
+    def __init__(self, loss_guidance_config: LossGuidanceConfig):
+        super().__init__(loss_guidance_config)
+
+        self.loss_fn = Birth_Death_Loss()
+
+    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
+        device = x_softmax.device
+        intervals = []
+
+        for sample_idx in range(x_softmax.shape[0]):
+            for class_idx in range(self.num_classes):
+                pass
+
+    def get_intervals(self, class_probs: torch.Tensor):
+        device = class_probs.device
+        cp = CubicalPersistence(
+            class_probs.cpu(),
+            relative=False,
+            reduced=False,
+            filtration="superlevel",
+            construction="V",
+            birth_UF=False,
+        )
+        intervals = cp.threshold_analysis_dim0_components(
+            num_components=self.num_classes,
+            num_bins=100,
+            degree=2,
+            minimal_threshold=0.1,
+        )
