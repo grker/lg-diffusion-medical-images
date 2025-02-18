@@ -18,14 +18,13 @@ def generate_loss_fns(config: LossConfig):
             loss_fns[name] = getattr(monai.losses, name)(**args)
         else:
             raise ValueError(f"Unknown loss function {name}")
-        
+
         scales[name] = scale
 
     if loss_fns.keys():
         return loss_fns, scales
     else:
         raise Exception(f"No Loss Function defined")
-        
 
 
 class CustomLoss(torch.nn.Module):
@@ -37,9 +36,20 @@ class CustomLoss(torch.nn.Module):
         self.loss_fns, self.scales = generate_loss_fns(config)
         self.log_loss_parts = config.log_loss_parts
 
-    def forward(self, prediction: torch.Tensor, target: torch.Tensor, logger=None, phase:str=None): 
-        assert(torch.equal(torch.Tensor(list(prediction.shape)), torch.Tensor(list(target.shape))), "Shape of prediction and target have to match!")
-        
+    def forward(
+        self,
+        prediction: torch.Tensor,
+        target: torch.Tensor,
+        logger=None,
+        phase: str = None,
+    ):
+        assert (
+            torch.equal(
+                torch.Tensor(list(prediction.shape)), torch.Tensor(list(target.shape))
+            ),
+            "Shape of prediction and target have to match!",
+        )
+
         loss = torch.zeros(1, device=prediction.device)
         for loss_name, loss_fn in self.loss_fns.items():
             loss_tmp = loss_fn(prediction, target)
@@ -50,9 +60,3 @@ class CustomLoss(torch.nn.Module):
             loss += self.scales[loss_name] * loss_tmp
 
         return loss
-        
-
-            
-            
-
-
