@@ -108,7 +108,7 @@ class Birth_Death_Guider_Dim0(PersHomologyBettiGuidance):
         print(f"birth death guider object created with config: {loss_guidance_config}")
         self.num_classes = loss_guidance_config.pseudo_gt_generator.num_classes
 
-        self.loss_fn = Birth_Death_Loss()
+        self.loss_fn = Birth_Death_Loss(self.topo_features)
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
         device = x_softmax.device
@@ -148,7 +148,6 @@ class Birth_Death_Guider_Dim0(PersHomologyBettiGuidance):
         loss = self.loss_fn(
             x_softmax,
             intervals_comp_0=intervals,
-            good_intervals_0=[1, 1, 1, 1],
         )
         print(f"loss: {loss}")
         return loss
@@ -160,7 +159,7 @@ class Birth_Death_Guider(PersHomologyBettiGuidance):
         print(f"birth death guider object created with config: {loss_guidance_config}")
         self.num_classes = loss_guidance_config.pseudo_gt_generator.num_classes
 
-        self.loss_fn = Birth_Death_Loss()
+        self.loss_fn = Birth_Death_Loss(self.topo_features)
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
         device = x_softmax.device
@@ -206,8 +205,6 @@ class Birth_Death_Guider(PersHomologyBettiGuidance):
             x_softmax,
             intervals_comp_0=intervals_0,
             intervals_comp_1=intervals_1,
-            good_intervals_0=[1, 1, 1, 1],
-            good_intervals_1=[1, 0, 1, 0],
         )
         print(f"loss: {loss}")
         return loss

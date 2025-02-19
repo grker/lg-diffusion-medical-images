@@ -3,7 +3,7 @@
 #SBATCH --mail-type=NONE # mail configuration: NONE, BEGIN, END, FAIL, REQUEUE, AL
 #SBATCH --output=/data/%u/master_thesis/jobs/%j.out # where to store the output (%j is the JOBID), subdirectory "jobs" must exist
 #SBATCH --error=/data/%u/master_thesis/jobs/%j.err # where to store error messages
-#SBATCH --time=12:00:00
+#SBATCH --time=6:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
@@ -40,7 +40,7 @@ echo "Starting on: $(date)"
 echo "SLURM_JOB_ID: ${SLURM_JOB_ID}"
 
 module load mamba gpu cuda/12.4
-nvidia-smi
+# nvidia-smi
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
@@ -69,5 +69,5 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 
-python src/loss_guidance.py run_id=29bjivsr loss_guidance=loss_guidance_seg_comp loss_guidance.starting_step=5 loss_guidance.name=Birth_Death_Guider_Dim0 loss_guidance.pseudo_gt_generator.base_prob=0.1 loss_guidance.gamma=1
+python src/loss_guidance.py run_id=29bjivsr loss_guidance=loss_guidance_seg_comp loss_guidance.starting_step=5 loss_guidance.name=Birth_Death_Guider loss_guidance.pseudo_gt_generator.base_prob=0.1 loss_guidance.gamma=0.1
 # python src/test.py

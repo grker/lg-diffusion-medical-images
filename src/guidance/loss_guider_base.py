@@ -43,6 +43,8 @@ class LossGuiderBetti(LossGuider):
             pgt_config.topo_features, pgt_config.num_classes
         )
 
+        print(f"topo features: {self.topo_features}")
+
         if self.loss_guidance_config.loss:
             self.loss_fn = CustomLoss(self.loss_guidance_config.loss)
         else:
@@ -61,8 +63,6 @@ class LossGuiderBetti(LossGuider):
             )
 
         idx_list = [i for i in range(num_classes)]
-
-        print(f"topo items: {topo_features.items()}")
 
         for class_idx, topo_feature in topo_features.items():
             if not isinstance(topo_feature, omegaconf.dictconfig.DictConfig):
@@ -96,4 +96,4 @@ class LossGuiderBetti(LossGuider):
                     f"Topo feature for class {class_idx} does not contain homology dimension for class 0"
                 )
 
-        return topo_features
+        return dict(topo_features)

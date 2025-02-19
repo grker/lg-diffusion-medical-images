@@ -22,16 +22,20 @@ def likelyhood_temperature_scaling(
 
 
 class Birth_Death_Loss(torch.nn.Module):
-    def __init__(self, **kwargs):
+    def __init__(self, betti_numbers: dict, **kwargs):
         super().__init__(**kwargs)
+
+        self.good_intervals_0 = [betti_numbers[i][0] for i in range(len(betti_numbers))]
+        self.good_intervals_1 = [betti_numbers[i][1] for i in range(len(betti_numbers))]
+
+        print(f"good_intervals_0: {self.good_intervals_0}")
+        print(f"good_intervals_1: {self.good_intervals_1}")
 
     def forward(
         self,
         prediction: torch.Tensor,
         intervals_comp_0: torch.Tensor = None,
         intervals_comp_1: torch.Tensor = None,
-        good_intervals_0: list[int] = None,
-        good_intervals_1: list[int] = None,
     ):
         """
         params:
@@ -43,18 +47,16 @@ class Birth_Death_Loss(torch.nn.Module):
         returns:
             torch.Tensor, shape (0,)
         """
-        # print(f"intervals_comp_0: {intervals_comp_0}")
-        # print(f"len intervals_comp_0: {len(intervals_comp_0)}")
         if intervals_comp_0 is not None:
             loss_0 = self._compute_interval_diff(
-                prediction, intervals_comp_0, good_intervals_0
+                prediction, intervals_comp_0, self.good_intervals_0
             )
         else:
             loss_0 = 0
 
         if intervals_comp_1 is not None:
             loss_1 = self._compute_interval_diff(
-                prediction, intervals_comp_1, good_intervals_1
+                prediction, intervals_comp_1, self.good_intervals_1
             )
         else:
             loss_1 = 0
@@ -76,24 +78,10 @@ class Birth_Death_Loss(torch.nn.Module):
         num_intervals_list = [
             len(intervals[i][j]) for i in range(num_samples) for j in range(num_classes)
         ]
-        # print(f"num_intervals_list: {num_intervals_list}")
-        # print(f"len num_intervals_list: {len(intervals)}")
-
-        # print(f"intervals[0]: {intervals[0]}")
-        # print(f"shape intervals[0][0]: {intervals[0][0].shape}")
-        # print(f"shape intervals[0][1]: {intervals[0][1].shape}")
-        # print(f"shape intervals[0][2]: {intervals[0][2].shape}")
-        # print(f"shape intervals[0][3]: {intervals[0][3].shape}")
-
-        # print(f"shape intervals[1][0]: {intervals[1][0].shape}")
-        # print(f"shape intervals[1][1]: {intervals[1][1].shape}")
-        # print(f"shape intervals[1][2]: {intervals[1][2].shape}")
-        # print(f"shape intervals[1][3]: {intervals[1][3].shape}")
 
         concated_intervals = [
             torch.cat(intervals[i], dim=0) for i in range(num_samples)
         ]
-        # print(f"concated_intervals: {concated_intervals}")
         concated_intervals = torch.cat(concated_intervals, dim=0)
 
         sample_indices = [
@@ -147,47 +135,3 @@ class Birth_Death_Loss(torch.nn.Module):
         )
 
         return torch.sum(interval_diff)
-
-
-class Birth_Death_Loss_2(torch.nn.Module):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def forward(
-        self,
-        prediction: torch.Tensor,
-        intervals_comp_0: torch.Tensor = None,
-        intervals_comp_1: torch.Tensor = None,
-        good_intervals_0: list[int] = None,
-        good_intervals_1: list[int] = None,
-    ):
-        if intervals_comp_0 is not None:
-            loss_0 = self._compute_interval_diff(
-                prediction, intervals_comp_0, good_intervals_0
-            )
-        else:
-            loss_0 = 0
-
-        if intervals_comp_1 is not None:
-            loss_1 = self._compute_interval_diff(
-                prediction, intervals_comp_1, good_intervals_1
-            )
-        else:
-            loss_1 = 0
-
-        return loss_0 + loss_1
-
-    def _compute_interval_diff(
-        self,
-        prediction: torch.Tensor,
-        intervals: torch.Tensor,
-        num_comps: list[int],
-    ):
-        """
-        params:
-            prediction: torch.Tensor, shape (batch_size, num_classes, height, width)
-            intervals: torch.Tensor, shape (batch_size, num_classes, num_intervals, 2, 2)
-        returns:
-            torch.Tensor, shape (0,)
-        """
-        return torch.sum(prediction)
