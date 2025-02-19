@@ -206,5 +206,5 @@ class Birth_Death_Guider(PersHomologyBettiGuidance):
             intervals_comp_0=intervals_0,
             intervals_comp_1=intervals_1,
         )
-        print(f"loss: {loss}")
+        print(f"loss: {loss}", flush=True)
         return loss
