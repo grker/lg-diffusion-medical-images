@@ -108,24 +108,11 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
         return likelihood
 
     def guidance_loss(self, model_output: torch.Tensor, t: int, batch_idx: int):
-        x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1).detach()
-        pseudo_gt = self.pseudo_gt(x_softmax, t, batch_idx)
+        x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
+        pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
 
         loss = self.loss_fn(model_output, pseudo_gt)
         return loss
-
-    def get_loss_gradient(
-        self,
-        model_output: torch.Tensor,
-        x_softmax: torch.Tensor,
-        noisy_mask: torch.Tensor,
-        t: int,
-        batch_idx: int,
-    ):
-        pseudo_gt = self.pseudo_gt(x_softmax, t, batch_idx)
-        loss = self.loss_fn(model_output, pseudo_gt)
-        loss.backward()
-        return noisy_mask.grad
 
 
 class LossGuiderSegmentationCycles(SegBasedBettiGuidance):

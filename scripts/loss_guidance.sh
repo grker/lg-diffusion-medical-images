@@ -69,5 +69,5 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 
-python src/loss_guidance.py run_id=29bjivsr loss_guidance=loss_guidance_seg_comp loss_guidance.starting_step=40 loss_guidance.pseudo_gt_generator.name=PseudoGTGeneratorDim0_Comps loss_guidance.pseudo_gt_generator.base_prob=0.1 loss_guidance.gamma=1500
+python src/loss_guidance.py run_id=29bjivsr loss_guidance=loss_guidance_seg_comp loss_guidance.starting_step=5 loss_guidance.name=Birth_Death_Guider_Dim0 loss_guidance.pseudo_gt_generator.base_prob=0.1 loss_guidance.gamma=1
 # python src/test.py

@@ -387,14 +387,12 @@ class DDPM_DPS(DDPM):
         )
 
     def initialize_guider(self, loss_guidance_config: LossGuidanceConfig):
-        import guidance.loss_guider
+        import guidance
 
         print(f"loss_guidance_config: {loss_guidance_config}")
-
+        print(f"name guider: {loss_guidance_config.name}")
         if hasattr(guidance, loss_guidance_config.name):
-            return getattr(guidance.loss_guider, loss_guidance_config.name)(
-                loss_guidance_config
-            )
+            return getattr(guidance, loss_guidance_config.name)(loss_guidance_config)
         else:
             raise ValueError(
                 f"PseudoGTGenerator {loss_guidance_config.name} not found!"
@@ -513,6 +511,13 @@ class DDPM_DPS(DDPM):
         loss.backward()
         with torch.no_grad():
             noisy_mask_grads = noisy_mask.grad
+            print(f"timestep: {t}")
+            print(f"noisy mask max: {torch.max(noisy_mask_grads)}")
+            print(f"noisy mask min: {torch.min(noisy_mask_grads)}")
+            print(f"noisy mask mean: {torch.mean(noisy_mask_grads)}")
+            print(
+                f"histogram of noisy mask grads: {torch.histc(noisy_mask_grads, bins=10)}"
+            )
             new_noisy_mask = (
                 self.scheduler.step(
                     model_output=model_output, timestep=t, sample=noisy_mask
