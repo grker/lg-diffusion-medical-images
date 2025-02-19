@@ -449,6 +449,13 @@ class DDPM_DPS(DDPM):
                 0,
             )
 
+            loss = self.loss_guider.guidance_loss(
+                noisy_mask,
+                0,
+                batch_idx,
+            )
+            print(f"loss at the end: {loss}")
+
             ensemble_mask.append(noisy_mask.detach().cpu())
             self.guidance_metrics.log_to_wandb()
 
@@ -492,6 +499,7 @@ class DDPM_DPS(DDPM):
         t: int,
         batch_idx: int,
     ):
+        print(f"timestep: {t}")
         num_samples = images.shape[0]
         noisy_mask = noisy_mask.requires_grad_(True)
         model_output = self.model(
@@ -505,19 +513,13 @@ class DDPM_DPS(DDPM):
             batch_idx,
         )
 
-        if t < 10 == 0:
-            print(f"loss at timestep {t}: {loss}")
-
         loss.backward()
         with torch.no_grad():
             noisy_mask_grads = noisy_mask.grad
-            print(f"timestep: {t}")
             print(f"noisy mask max: {torch.max(noisy_mask_grads)}")
             print(f"noisy mask min: {torch.min(noisy_mask_grads)}")
             print(f"noisy mask mean: {torch.mean(noisy_mask_grads)}")
-            print(
-                f"histogram of noisy mask grads: {torch.histc(noisy_mask_grads, bins=10)}"
-            )
+
             new_noisy_mask = (
                 self.scheduler.step(
                     model_output=model_output, timestep=t, sample=noisy_mask

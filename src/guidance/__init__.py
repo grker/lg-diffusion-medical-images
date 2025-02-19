@@ -6,6 +6,7 @@ from .betti.segbased_guidance import (
 from .betti.pershomology_guidance import (
     PersHomologyBettiGuidanceDim0_Comps,
     Birth_Death_Guider_Dim0,
+    Birth_Death_Guider,
 )
 
 __all__ = [

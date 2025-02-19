@@ -137,7 +137,7 @@ class Birth_Death_Guider_Dim0(PersHomologyBettiGuidance):
             birth_UF=False,
         )
 
-        return cp.birth_death_pixels_dim0(start=num_comps).to(device=device)
+        return cp.birth_death_pixels(0, start=0).to(device=device)
 
     def guidance_loss(
         self, model_output: torch.Tensor, t: int = None, batch_idx: int = None
@@ -146,7 +146,68 @@ class Birth_Death_Guider_Dim0(PersHomologyBettiGuidance):
         intervals = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
 
         loss = self.loss_fn(
-            x_softmax, intervals_comp_0=intervals, good_intervals_0=[0, 0, 0, 0]
+            x_softmax,
+            intervals_comp_0=intervals,
+            good_intervals_0=[1, 1, 1, 1],
+        )
+        print(f"loss: {loss}")
+        return loss
+
+
+class Birth_Death_Guider(PersHomologyBettiGuidance):
+    def __init__(self, loss_guidance_config: LossGuidanceConfig):
+        super().__init__(loss_guidance_config)
+        print(f"birth death guider object created with config: {loss_guidance_config}")
+        self.num_classes = loss_guidance_config.pseudo_gt_generator.num_classes
+
+        self.loss_fn = Birth_Death_Loss()
+
+    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
+        device = x_softmax.device
+        intervals_0 = []
+        intervals_1 = []
+
+        for sample_idx in range(x_softmax.shape[0]):
+            sample_intervals_0 = []
+            sample_intervals_1 = []
+            for class_idx in range(self.num_classes):
+                interval_0, interval_1 = self.get_intervals(
+                    x_softmax[sample_idx, class_idx],
+                )
+                sample_intervals_0.append(interval_0)
+                sample_intervals_1.append(interval_1)
+
+            intervals_0.append(sample_intervals_0)
+            intervals_1.append(sample_intervals_1)
+        return intervals_0, intervals_1
+
+    def get_intervals(self, class_probs: torch.Tensor):
+        device = class_probs.device
+        cp = CubicalPersistence(
+            class_probs.cpu(),
+            relative=False,
+            reduced=False,
+            filtration="superlevel",
+            construction="V",
+            birth_UF=False,
+        )
+
+        return cp.birth_death_pixels(0, start=0).to(
+            device=device
+        ), cp.birth_death_pixels(1, start=0).to(device=device)
+
+    def guidance_loss(
+        self, model_output: torch.Tensor, t: int = None, batch_idx: int = None
+    ):
+        x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
+        intervals_0, intervals_1 = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
+
+        loss = self.loss_fn(
+            x_softmax,
+            intervals_comp_0=intervals_0,
+            intervals_comp_1=intervals_1,
+            good_intervals_0=[1, 1, 1, 1],
+            good_intervals_1=[1, 0, 1, 0],
         )
         print(f"loss: {loss}")
         return loss
