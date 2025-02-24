@@ -14,4 +14,5 @@ __all__ = [
     "LossGuiderSegmentationCycles",
     "PersHomologyBettiGuidanceDim0_Comps",
     "Birth_Death_Guider_Dim0",
+    "Birth_Death_Guider",
 ]
