@@ -410,7 +410,7 @@ def visualize_component_map(
     :param title: str, title of the visualization
     """
     num_classes = component_map.shape[1]
-    
+
     if merged:
         for class_idx in range(num_classes):
             component_map[:, class_idx, :, :] = (
@@ -442,3 +442,78 @@ def visualize_component_map(
         )
         print(f"grid shape: {grid.shape}", flush=True)
         wandb.log({f"{title}": wandb.Image(grid, f"BIdx_{batch_idx}_Idx_{idx}")})
+
+
+def heatmap(
+    heatmap: torch.Tensor,
+    title: str,
+    original_image: torch.Tensor = None,
+    batch_idx: int = None,
+    idx: int = None,
+    commit: bool = True,
+):
+    """
+    :param heatmap: tensor of shape (H, W)
+    :param title: str, title of the visualization
+    :param original_image: tensor of shape (H, W)
+    """
+
+    if original_image is not None:
+        fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+        heat_ax = ax[0].imshow(heatmap, cmap="coolwarm")
+        ax[0].axis("off")
+        fig.colorbar(heat_ax)
+        orig_ax = plt.imshow(
+            original_image,
+            cmap="gray",
+            vmin=original_image.min(),
+            vmax=original_image.max(),
+        )
+        ax[1].axis("off")
+        fig.colorbar(orig_ax)
+
+    else:
+        fig, ax = plt.subplots()
+        ax.imshow(heatmap, cmap="coolwarm")
+        ax.axis("off")
+        ax.colorbar()
+
+    image_title = (
+        f"Heatmap_BIdx_{batch_idx}_Idx_{idx}"
+        if batch_idx is not None and idx is not None
+        else f"Heatmap"
+    )
+
+    wandb.log({title: wandb.Image(fig, caption=image_title)}, commit=commit)
+    plt.close(fig)
+
+
+def visualize_gradients(
+    gradients: torch.Tensor,
+    timestep: int,
+    batch_idx: int,
+    idx: int,
+    original_image: torch.Tensor = None,
+    commit: bool = True,
+):
+    """
+    :param gradients: tensor of shape (num_classes, H, W)
+    :param timestep: int, timestep of the gradient
+    :param batch_idx: int, batch index
+    :param idx: int, index of the sample
+    """
+
+    for class_idx in range(gradients.shape[0]):
+        commit_class = True if commit and class_idx == gradients.shape[0] - 1 else False
+        heatmap(
+            gradients[class_idx, :, :].cpu(),
+            f"Gradients_t_{timestep}_class_{class_idx}",
+            (
+                original_image[class_idx, :, :].cpu()
+                if original_image is not None
+                else None
+            ),
+            batch_idx,
+            idx,
+            commit_class,
+        )
