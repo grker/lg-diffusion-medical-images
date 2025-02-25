@@ -1,14 +1,14 @@
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from omegaconf import open_dict
 
 from models.base_segmentation import BaseSegmentation
-from utils.hydra_config import SegmentationConfig, UNetConfig
-from utils.visualize import visualize_segmentation
-from utils.metrics import compute_and_log_metrics
 from utils.helper import unpack_batch
-from omegaconf import open_dict
+from utils.hydra_config import SegmentationConfig
 from utils.mask_transformer import BaseMaskMapping
+from utils.metrics import compute_and_log_metrics
+from utils.visualize import visualize_segmentation
 
 
 class UnetSegmentation(BaseSegmentation):

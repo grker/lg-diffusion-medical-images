@@ -9,4 +9,3 @@ threshold: 0.5
 prediction_type: epsilon
 num_inference_steps: null
 clip_range: 1
-

@@ -1,6 +1,5 @@
-import torch
 import monai.metrics
-import numpy as np
+import torch
 
 import utils.metrics_wrapper
 from utils.hydra_config import MetricsConfig
@@ -53,16 +52,15 @@ def compute_and_log_metrics(
                 and metric_fn.logging_names is not None
             ):
                 if len(metric_fn.logging_names) > 1:
-                    assert (
-                        len(metric_fn.logging_names) == len(score),
-                        "Number of logging names must match number of scores",
+                    assert len(metric_fn.logging_names) == len(score), (
+                        "Number of logging names must match number of scores"
                     )
                     for i, name in enumerate(metric_fn.logging_names):
                         logger(
                             f"{phase}_{str(name)}", clean_nan_scores_and_avg(score[i])
                         )
                 elif len(metric_fn.logging_names) == 1:
-                    assert type(score) == torch.Tensor, "Score must be a tensor"
+                    assert type(score) is torch.Tensor, "Score must be a tensor"
                     logger(
                         f"{phase}_{str(metric_fn.logging_names[0])}",
                         clean_nan_scores_and_avg(score),
@@ -70,7 +68,7 @@ def compute_and_log_metrics(
                 else:
                     raise ValueError("Invalid number of logging names")
             else:
-                assert type(score) == torch.Tensor, "Score must be a tensor"
+                assert type(score) is torch.Tensor, "Score must be a tensor"
                 logger(f"{phase}_{str(metric_name)}", clean_nan_scores_and_avg(score))
                 # logging(
                 #     logger,

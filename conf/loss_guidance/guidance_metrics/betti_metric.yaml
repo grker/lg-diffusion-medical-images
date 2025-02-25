@@ -1,0 +1,4 @@
+metric_fns_config:
+    BettiNumberMetric_0:
+      connectivity: 2
+      include_background: False

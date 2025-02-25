@@ -1,16 +1,16 @@
-import hydra
-import os
 import logging
-import wandb
-import torch
-import yaml
-import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
-from wandb import Api
-from omegaconf import OmegaConf
+import os
 
-from utils.hydra_config import SegmentationConfig, EnsembleConfig
+import hydra
+import pytorch_lightning as pl
+import torch
+from omegaconf import OmegaConf
+from pytorch_lightning.loggers import WandbLogger
+
+import wandb
 from models.base_segmentation import create_segmentor
+from utils.hydra_config import EnsembleConfig
+from wandb import Api
 
 
 @hydra.main(
@@ -19,7 +19,6 @@ from models.base_segmentation import create_segmentor
     config_name="ensemble_test",
 )
 def main(config: EnsembleConfig):
-
     logging.getLogger("pytorch_lightning").setLevel(
         logging.INFO
     )  # suppress excessive logs

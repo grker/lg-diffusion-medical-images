@@ -1,22 +1,24 @@
-from abc import abstractmethod
 import math
+from abc import abstractmethod
+
 import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-from .utils import (
-    checkpoint,
-    conv_nd,
-    linear, 
-    avg_pool_nd,
-    zero_module,
-    normalization,
-    timestep_embedding,
-    convert_module_to_f16, 
-    convert_module_to_f32,
-)
 
 from utils.hydra_config import UNetConfig
+
+from .utils import (
+    avg_pool_nd,
+    checkpoint,
+    conv_nd,
+    convert_module_to_f16,
+    convert_module_to_f32,
+    linear,
+    normalization,
+    timestep_embedding,
+    zero_module,
+)
 
 
 class AttentionPool2d(nn.Module):
@@ -33,7 +35,7 @@ class AttentionPool2d(nn.Module):
     ):
         super().__init__()
         self.positional_embedding = nn.Parameter(
-            th.randn(embed_dim, spacial_dim ** 2 + 1) / embed_dim ** 0.5
+            th.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5
         )
         self.qkv_proj = conv_nd(1, embed_dim, 3 * embed_dim, 1)
         self.c_proj = conv_nd(1, embed_dim, output_dim or embed_dim, 1)
@@ -277,9 +279,9 @@ class AttentionBlock(nn.Module):
         if num_head_channels == -1:
             self.num_heads = num_heads
         else:
-            assert (
-                channels % num_head_channels == 0
-            ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
+            assert channels % num_head_channels == 0, (
+                f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
+            )
             self.num_heads = channels // num_head_channels
         self.use_checkpoint = use_checkpoint
         self.norm = normalization(channels)
@@ -321,7 +323,7 @@ def count_flops_attn(model, _x, y):
     # We perform two matmuls with the same number of ops.
     # The first computes the weight matrix, the second computes
     # the combination of the value vectors.
-    matmul_ops = 2 * b * (num_spatial ** 2) * c
+    matmul_ops = 2 * b * (num_spatial**2) * c
     model.total_ops += th.DoubleTensor([matmul_ops])
 
 
@@ -424,10 +426,7 @@ class UNetModel(nn.Module):
                                     increased efficiency.
     """
 
-    def __init__(
-        self,
-        config: UNetConfig
-    ):
+    def __init__(self, config: UNetConfig):
         super().__init__()
 
         if config.num_heads_upsample == -1:
@@ -464,7 +463,9 @@ class UNetModel(nn.Module):
         self.input_blocks = nn.ModuleList(
             [
                 TimestepEmbedSequential(
-                    conv_nd(self.dims, self.in_channels, self.model_channels, 3, padding=1)
+                    conv_nd(
+                        self.dims, self.in_channels, self.model_channels, 3, padding=1
+                    )
                 )
             ]
         )
@@ -591,7 +592,9 @@ class UNetModel(nn.Module):
                             up=True,
                         )
                         if config.resblock_updown
-                        else Upsample(ch, self.conv_resample, dims=self.dims, out_channels=out_ch)
+                        else Upsample(
+                            ch, self.conv_resample, dims=self.dims, out_channels=out_ch
+                        )
                     )
                     ds //= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
@@ -600,7 +603,9 @@ class UNetModel(nn.Module):
         self.out = nn.Sequential(
             normalization(ch),
             nn.SiLU(),
-            zero_module(conv_nd(self.dims, self.model_channels, self.out_channels, 3, padding=1)),
+            zero_module(
+                conv_nd(self.dims, self.model_channels, self.out_channels, 3, padding=1)
+            ),
         )
 
     def convert_to_fp16(self):
@@ -628,9 +633,9 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
+        assert (y is not None) == (self.num_classes is not None), (
+            "must specify y if and only if the model is class-conditional"
+        )
 
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
@@ -640,7 +645,7 @@ class UNetModel(nn.Module):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype)
-        for module in self.input_blocks:        
+        for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)
         h = self.middle_block(h, emb)
@@ -813,9 +818,9 @@ class EncoderUNetModel(nn.Module):
         )
         self._feature_size += ch
         self.pool = pool
-        self.gap = nn.AvgPool2d((8, 8))  #global average pooling
+        self.gap = nn.AvgPool2d((8, 8))  # global average pooling
         self.cam_feature_maps = None
-        print('pool', pool)
+        print("pool", pool)
         if pool == "adaptive":
             self.out = nn.Sequential(
                 normalization(ch),
@@ -860,8 +865,6 @@ class EncoderUNetModel(nn.Module):
         self.input_blocks.apply(convert_module_to_f32)
         self.middle_block.apply(convert_module_to_f32)
 
-
-
     def forward(self, x, timesteps):
         """
         Apply the model to an input batch.
@@ -880,13 +883,12 @@ class EncoderUNetModel(nn.Module):
                 results.append(h.type(x.dtype).mean(dim=(2, 3)))
         h = self.middle_block(h, emb)
 
-
         if self.pool.startswith("spatial"):
             self.cam_feature_maps = h
             h = self.gap(h)
             N = h.shape[0]
             h = h.reshape(N, -1)
-            print('h1', h.shape)
+            print("h1", h.shape)
             return self.out(h)
         else:
             h = h.type(x.dtype)

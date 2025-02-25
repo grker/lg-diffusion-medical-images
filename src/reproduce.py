@@ -1,19 +1,17 @@
-import hydra
-import os
 import logging
-import wandb
+import os
+
+import hydra
 import pytorch_lightning as pl
 import torch
-import sys
-import torchvision
-
-from omegaconf import OmegaConf, open_dict
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from omegaconf import OmegaConf
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from wandb import Api
 
-from utils.hydra_config import ReproduceConfig
+import wandb
 from models.base_segmentation import create_segmentor
+from utils.hydra_config import ReproduceConfig
+from wandb import Api
 
 
 @hydra.main(
@@ -22,7 +20,6 @@ from models.base_segmentation import create_segmentor
     config_name="reproduce",
 )
 def main(config: ReproduceConfig):
-
     logging.getLogger("pytorch_lightning").setLevel(
         logging.INFO
     )  # suppress excessive logs
@@ -87,7 +84,7 @@ def main(config: ReproduceConfig):
         dirpath=log_dir,
     )
 
-    print(f"Initialization done.")
+    print("Initialization done.")
 
     if old_config.train:
         trainer = pl.Trainer(

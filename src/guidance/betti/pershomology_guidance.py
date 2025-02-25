@@ -1,10 +1,15 @@
 import torch
 
-from utils.hydra_config import LossGuidanceConfig
 from betti_matching.BettiMatching import CubicalPersistence
+from utils.hydra_config import (
+    BettiBirthDeathGuiderConfig,
+    BettiPersHomologyGuiderConfig,
+)
 
 from ..loss_guider_base import LossGuiderBetti
-from ..utils import likelyhood_temperature_scaling, Birth_Death_Loss
+from ..utils import (
+    likelyhood_temperature_scaling,
+)
 
 
 class PersHomologyBettiGuidance(LossGuiderBetti):
@@ -12,16 +17,17 @@ class PersHomologyBettiGuidance(LossGuiderBetti):
     Superclass for all loss guiders optimizing the betti number metric/error using persistence homology analysis of the output to create a pseudo ground truth.
     """
 
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        super().__init__(loss_guidance_config)
+    def __init__(self, guider_config: BettiPersHomologyGuiderConfig):
+        super().__init__(guider_config)
 
 
 class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
+    # TODO: refactor it
 
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        super().__init__(loss_guidance_config)
+    def __init__(self, guider_config: BettiPersHomologyGuiderConfig):
+        super().__init__(guider_config)
 
-        pgt_config = loss_guidance_config.pseudo_gt_generator
+        pgt_config = guider_config
 
         self.scaling_function = (
             lambda softmax, likelyhood: likelyhood_temperature_scaling(
@@ -33,7 +39,6 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
         self.num_classes = pgt_config.num_classes
 
         super().__init__(pgt_config)
-        print(f"pgt gt object created with config: {pgt_config}")
 
     def pseudo_gt(
         self, x_softmax: torch.Tensor, t: int, batch_idx: int, no_scaling: bool = False
@@ -58,7 +63,6 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
         if no_scaling:
             return likelihood
         else:
-            scaled_version = self.scaling_function(x_softmax, likelihood)
             return self.scaling_function(x_softmax, likelihood)
 
     def likelihood_map(self, class_probs: torch.Tensor, num_components: int):
@@ -102,67 +106,17 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
         return likelihood
 
 
-class Birth_Death_Guider_Dim0(PersHomologyBettiGuidance):
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        super().__init__(loss_guidance_config)
-        print(f"birth death guider object created with config: {loss_guidance_config}")
-        self.num_classes = loss_guidance_config.pseudo_gt_generator.num_classes
-
-        self.loss_fn = Birth_Death_Loss(self.topo_features)
-
-    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
-        device = x_softmax.device
-        intervals = []
-
-        for sample_idx in range(x_softmax.shape[0]):
-            sample_intervals = []
-            for class_idx in range(self.num_classes):
-                sample_intervals.append(
-                    self.get_intervals(
-                        x_softmax[sample_idx, class_idx],
-                        self.topo_features[class_idx][0],
-                    )
-                )
-            intervals.append(sample_intervals)
-        return intervals
-
-    def get_intervals(self, class_probs: torch.Tensor, num_comps: int):
-        device = class_probs.device
-        cp = CubicalPersistence(
-            class_probs.cpu(),
-            relative=False,
-            reduced=False,
-            filtration="superlevel",
-            construction="V",
-            birth_UF=False,
-        )
-
-        return cp.birth_death_pixels(0, start=0).to(device=device)
-
-    def guidance_loss(
-        self, model_output: torch.Tensor, t: int = None, batch_idx: int = None
-    ):
-        x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
-        intervals = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
-
-        loss = self.loss_fn(
-            x_softmax,
-            intervals_comp_0=intervals,
-        )
-        print(f"loss: {loss}")
-        return loss
-
-
 class Birth_Death_Guider(PersHomologyBettiGuidance):
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        super().__init__(loss_guidance_config)
-        print(f"birth death guider object created with config: {loss_guidance_config}")
-        self.num_classes = loss_guidance_config.pseudo_gt_generator.num_classes
+    def __init__(self, guider_config: BettiBirthDeathGuiderConfig):
+        super().__init__(guider_config)
+        self.num_classes = guider_config.num_classes
+        self.downsampling = guider_config.downsampling
+        self.downsampling_factor = tuple(guider_config.downsampling_factor)
+        self.downsampling_mode = guider_config.downsampling_mode
 
-        self.loss_fn = Birth_Death_Loss(self.topo_features)
+        self.modifier = guider_config.modifier
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
-        device = x_softmax.device
         intervals_0 = []
         intervals_1 = []
 
@@ -198,13 +152,71 @@ class Birth_Death_Guider(PersHomologyBettiGuidance):
     def guidance_loss(
         self, model_output: torch.Tensor, t: int = None, batch_idx: int = None
     ):
+        if self.downsampling:
+            model_output = self.downsample_model_output(
+                model_output, self.downsampling_factor, self.downsampling_mode
+            )
+
         x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
-        intervals_0, intervals_1 = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
+
+        intervals_0, intervals_1 = self.pseudo_gt(
+            x_softmax.detach(),
+            t,
+            batch_idx,
+        )
 
         loss = self.loss_fn(
             x_softmax,
             intervals_comp_0=intervals_0,
             intervals_comp_1=intervals_1,
         )
-        print(f"loss: {loss}", flush=True)
+        print(f"{t}: loss: {loss}", flush=True)
         return loss
+
+    def downsample_model_output(
+        self,
+        model_output: torch.Tensor,
+        scale_factor: tuple[float, float],
+        mode: str = "bilinear",
+    ):
+        from torch.nn.functional import interpolate
+
+        return interpolate(
+            model_output,
+            scale_factor=scale_factor,
+            mode=mode,
+            align_corners=False,
+        )
+
+
+class Birth_Death_Guider_Dim0(Birth_Death_Guider):
+    def __init__(self, guider_config: BettiBirthDeathGuiderConfig):
+        super().__init__(guider_config)
+
+    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
+        intervals = []
+
+        for sample_idx in range(x_softmax.shape[0]):
+            sample_intervals = []
+            for class_idx in range(self.num_classes):
+                sample_intervals.append(
+                    self.get_intervals(
+                        x_softmax[sample_idx, class_idx],
+                        self.topo_features[class_idx][0],
+                    )
+                )
+            intervals.append(sample_intervals)
+        return intervals, None
+
+    def get_intervals(self, class_probs: torch.Tensor, num_comps: int):
+        device = class_probs.device
+        cp = CubicalPersistence(
+            class_probs.cpu(),
+            relative=False,
+            reduced=False,
+            filtration="superlevel",
+            construction="V",
+            birth_UF=False,
+        )
+
+        return cp.birth_death_pixels(0, start=0).to(device=device)

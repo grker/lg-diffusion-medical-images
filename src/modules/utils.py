@@ -168,22 +168,23 @@ class CheckpointFunction(th.autograd.Function):
         del ctx.input_params
         del output_tensors
         return (None, None) + input_grads
-    
-def convert_module_to_f16(l):
+
+
+def convert_module_to_f16(layer):
     """
     Convert primitive modules to float16.
     """
-    if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Conv3d)):
-        l.weight.data = l.weight.data.half()
-        if l.bias is not None:
-            l.bias.data = l.bias.data.half()
+    if isinstance(layer, (nn.Conv1d, nn.Conv2d, nn.Conv3d)):
+        layer.weight.data = layer.weight.data.half()
+        if layer.bias is not None:
+            layer.bias.data = layer.bias.data.half()
 
 
-def convert_module_to_f32(l):
+def convert_module_to_f32(layer):
     """
     Convert primitive modules to float32, undoing convert_module_to_f16().
     """
-    if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Conv3d)):
-        l.weight.data = l.weight.data.float()
-        if l.bias is not None:
-            l.bias.data = l.bias.data.float()
+    if isinstance(layer, (nn.Conv1d, nn.Conv2d, nn.Conv3d)):
+        layer.weight.data = layer.weight.data.float()
+        if layer.bias is not None:
+            layer.bias.data = layer.bias.data.float()

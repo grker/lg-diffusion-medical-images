@@ -1,12 +1,12 @@
-import matplotlib.pyplot as plt
-import torch
-import wandb
 import random
-import time
-import numpy as np
-import torchvision
 
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torchvision
 from PIL import Image
+
+import wandb
 
 
 def visualize_nii(data, start=1, end=2):
@@ -291,9 +291,6 @@ def visualize_mean_variance_class_wise(
         std_mask_classes[:, class_idx, :, :] = std_mask
 
     for idx in range(mean_mask_classes.shape[0]):
-        mask = torchvision.utils.make_grid(
-            mean_mask_classes[idx].unsqueeze(1), nrow=min(num_classes, 4), padding=10
-        )
         wandb.log(
             {
                 "mean_mask": wandb.Image(
@@ -481,7 +478,7 @@ def heatmap(
     image_title = (
         f"Heatmap_BIdx_{batch_idx}_Idx_{idx}"
         if batch_idx is not None and idx is not None
-        else f"Heatmap"
+        else "Heatmap"
     )
 
     wandb.log({title: wandb.Image(fig, caption=image_title)}, commit=commit)

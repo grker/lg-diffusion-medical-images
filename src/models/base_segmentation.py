@@ -1,21 +1,19 @@
+import functools
 from typing import Callable, Union
+
 import pytorch_lightning as pl
 import torch
-import functools
-
-from torch.utils.data.dataset import Dataset
-from torch.utils.data.dataloader import DataLoader
 from torch.utils.data import random_split
-from utils.metrics import generate_metrics_fn
+from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataset import Dataset
+
+from loss import CustomLoss
 from utils.hydra_config import (
-    DatasetConfig,
     DataloaderConfig,
-    UNetConfig,
-    DiffusionConfig,
+    DatasetConfig,
     SegmentationConfig,
-    MetricsConfig,
 )
-from utils.loss import CustomLoss
+from utils.metrics import generate_metrics_fn
 
 
 def create_segmentor(config: SegmentationConfig, **kwargs: dict):
@@ -81,7 +79,7 @@ class BaseSegmentation:
         :return: DataLoader
         """
 
-        print(f"Creating dataloaders")
+        print("Creating dataloaders")
         train_size = int(config.train_ratio * len(dataset))
         val_size = int(config.validation_ratio * len(dataset))
         test_size = len(dataset) - train_size - val_size
@@ -139,7 +137,9 @@ class BaseSegmentation:
         """
         return CustomLoss(self.config.loss)
 
-    def initialize(self, test: bool = False) -> Union[
+    def initialize(
+        self, test: bool = False
+    ) -> Union[
         tuple[pl.LightningModule, DataLoader, DataLoader, DataLoader],
         tuple[functools.partial, DataLoader, dict],
     ]:

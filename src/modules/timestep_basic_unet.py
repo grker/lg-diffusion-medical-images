@@ -4,13 +4,15 @@ This modified architecture extends the standard BasicUNet by incorporating
 temporal information through timestep embeddings, making it suitable for diffusion models
 """
 
+import logging
+
+import torch
 import torch.nn as nn
 from monai.networks.nets import BasicUNet
-from utils.hydra_config import ModelConfig, BasicUNetConfig
-from omegaconf import OmegaConf
-import logging
-import torch
-from .utils import timestep_embedding, linear
+
+from utils.hydra_config import BasicUNetConfig
+
+from .utils import linear, timestep_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +28,14 @@ class TimestepsBasicUNet(BasicUNet):
     use_scale_shift_norm: bool
 
     def __init__(self, config: BasicUNetConfig):
-        self.layers = 4 # number of downsampling layers and upsampling layers --> set to 4 as BasicUNet of MONAI has 4 layers (cannot be changed)
-        
+        self.layers = 4  # number of downsampling layers and upsampling layers --> set to 4 as BasicUNet of MONAI has 4 layers (cannot be changed)
+
         if config.features is not None and len(config.features) == self.layers + 2:
             self.features = config.features
         else:
-            logger.warning("Features not provided or incorrect length. Using default features.")
+            logger.warning(
+                "Features not provided or incorrect length. Using default features."
+            )
             self.features = [32, 32, 64, 128, 256, 32]
 
         self.spatial_dims = config.spatial_dims
@@ -40,7 +44,6 @@ class TimestepsBasicUNet(BasicUNet):
         self.dropout = config.dropout
         self.emb_channels = config.emb_channels
         self.time_start = config.time_start
-        
 
         bUnet_config = {
             "spatial_dims": config.spatial_dims,
@@ -50,7 +53,7 @@ class TimestepsBasicUNet(BasicUNet):
             "dropout": config.dropout,
         }
 
-        super().__init__(**bUnet_config) # builds the underlying BasicUNet
+        super().__init__(**bUnet_config)  # builds the underlying BasicUNet
 
         # Timestep embedding
         self.time_embed = nn.Sequential(
@@ -65,17 +68,17 @@ class TimestepsBasicUNet(BasicUNet):
             self.time_layers_down.append(
                 nn.Sequential(
                     nn.SiLU(),
-                    linear(self.emb_channels, self.features[i+1]),
+                    linear(self.emb_channels, self.features[i + 1]),
                 )
             )
 
         # Timestep layers for upsampling
         self.time_layers_up = nn.ModuleList()
-        for i in range(self.layers-1):
+        for i in range(self.layers - 1):
             self.time_layers_up.append(
                 nn.Sequential(
                     nn.SiLU(),
-                    linear(self.emb_channels, self.features[-(i+3)]),
+                    linear(self.emb_channels, self.features[-(i + 3)]),
                 )
             )
         self.time_layers_up.append(
@@ -100,7 +103,7 @@ class TimestepsBasicUNet(BasicUNet):
 
         # Downsampling
         for i in range(self.layers):
-            x = getattr(self, f"down_{i+1}")(x)
+            x = getattr(self, f"down_{i + 1}")(x)
             emb_out = self.time_layers_down[i](time_emb).type(x.dtype)
             while len(emb_out.shape) < len(x.shape):
                 emb_out = emb_out[..., None]
@@ -108,18 +111,17 @@ class TimestepsBasicUNet(BasicUNet):
 
             if i != self.layers - 1:
                 res.append(x)
-        
+
         assert len(res) == self.layers
 
         # Upsampling
         for i in range(self.layers):
-            skip_element = res[-(i+1)]
-            x = getattr(self, f"upcat_{self.layers-i}")(x, skip_element)
+            skip_element = res[-(i + 1)]
+            x = getattr(self, f"upcat_{self.layers - i}")(x, skip_element)
             emb_out = self.time_layers_up[i](time_emb).type(x.dtype)
             while len(emb_out.shape) < len(x.shape):
                 emb_out = emb_out[..., None]
             x = x + emb_out
-            
+
         logits = self.final_conv(x)
         return logits
-    

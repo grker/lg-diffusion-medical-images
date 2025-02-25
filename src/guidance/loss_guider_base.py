@@ -1,8 +1,8 @@
-import torch
 import omegaconf
+import torch
 
-from utils.loss import CustomLoss
-from utils.hydra_config import LossGuidanceConfig
+from loss import single_loss_fn
+from utils.hydra_config import BettiGuiderConfig, GuiderConfig
 
 
 class LossGuider:
@@ -11,14 +11,9 @@ class LossGuider:
     It defines and computes the loss used in the guidance step. It also contains any logic that is needed to modify the model output and to create a pseudo ground truth which can than be used to compute the loss.
     """
 
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        self.loss_guidance_config = loss_guidance_config
-
-    def get_starting_step(self):
-        return self.loss_guidance_config.starting_step
-
-    def get_gamma(self):
-        return self.loss_guidance_config.gamma
+    def __init__(self, guider_config: GuiderConfig):
+        self.guider_config = guider_config
+        self.num_classes = guider_config.num_classes
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int = None, batch_idx: int = None):
         raise NotImplementedError("Pseudo GT not implemented")
@@ -34,19 +29,20 @@ class LossGuiderBetti(LossGuider):
     Superclass for all loss guiders optimizing the betti number metric/error.
     """
 
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        super().__init__(loss_guidance_config)
-
-        pgt_config = loss_guidance_config.pseudo_gt_generator
+    def __init__(self, guider_config: BettiGuiderConfig):
+        super().__init__(guider_config)
 
         self.topo_features = self.check_topofeatures(
-            pgt_config.topo_features, pgt_config.num_classes
+            guider_config.topo_features, guider_config.num_classes
         )
 
-        print(f"topo features: {self.topo_features}")
+        if guider_config.loss:
+            for loss_name in guider_config.loss.loss_fns_config.keys():
+                guider_config.loss.loss_fns_config[loss_name]["args"][
+                    "betti_numbers"
+                ] = self.topo_features
 
-        if self.loss_guidance_config.loss:
-            self.loss_fn = CustomLoss(self.loss_guidance_config.loss)
+            self.loss_fn = single_loss_fn(guider_config.loss)
         else:
             from torch.nn import CrossEntropyLoss
 
@@ -78,12 +74,12 @@ class LossGuiderBetti(LossGuider):
 
             if (
                 0 in topo_feature.keys()
-                and type(topo_feature[0]) == int
+                and type(topo_feature[0]) is int
                 and topo_feature[0] >= 0
             ):
                 if (
                     1 in topo_feature.keys()
-                    and type(topo_feature[1]) == int
+                    and type(topo_feature[1]) is int
                     and topo_feature[1] >= 0
                 ):
                     continue

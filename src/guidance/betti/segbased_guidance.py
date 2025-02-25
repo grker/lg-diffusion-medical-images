@@ -1,6 +1,6 @@
 import torch
 
-from utils.hydra_config import LossGuidanceConfig
+from utils.hydra_config import BettiSegmentationGuiderConfig
 
 from ..loss_guider_base import LossGuiderBetti
 
@@ -10,11 +10,10 @@ class SegBasedBettiGuidance(LossGuiderBetti):
     Superclass for all loss guiders optimizing the betti number metric/error using the actual segmentation of the output to create a pseudo ground truth.
     """
 
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        super().__init__(loss_guidance_config)
+    def __init__(self, guider_config: BettiSegmentationGuiderConfig):
+        super().__init__(guider_config)
 
-        self.base_prob = self.loss_guidance_config.pseudo_gt_generator.base_prob
-        self.num_classes = self.loss_guidance_config.pseudo_gt_generator.num_classes
+        self.base_prob = guider_config.base_prob
 
     def component_map(self, prediction: torch.Tensor, num_components: int):
         """
@@ -76,11 +75,10 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
     All used torch operations can be executed on the GPU, no transfer to the CPU is needed.
     """
 
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        super().__init__(loss_guidance_config)
+    def __init__(self, guider_config: BettiSegmentationGuiderConfig):
+        super().__init__(guider_config)
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
-
         prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)
         prediction = torch.zeros_like(x_softmax).scatter_(1, prediction, 1)
 
@@ -120,8 +118,8 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
     This loss guider is a simple loss guider that tries to correct the amount of cycles and the amount of components in the guidance process. All used torch operations can be executed on the GPU, no transfer to the CPU is needed.
     """
 
-    def __init__(self, loss_guidance_config: LossGuidanceConfig):
-        super().__init__(loss_guidance_config)
+    def __init__(self, guider_config: BettiSegmentationGuiderConfig):
+        super().__init__(guider_config)
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
         prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)

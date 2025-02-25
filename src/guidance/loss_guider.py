@@ -1,9 +1,9 @@
-import torch
 import omegaconf
+import torch
 from torch.nn import CrossEntropyLoss
 
+from loss import CustomLoss
 from utils.hydra_config import LossGuidanceConfig
-from utils.loss import CustomLoss
 
 
 class LossGuider:
@@ -77,12 +77,12 @@ class LossGuiderBetti(LossGuider):
 
             if (
                 0 in topo_feature.keys()
-                and type(topo_feature[0]) == int
+                and type(topo_feature[0]) is int
                 and topo_feature[0] >= 0
             ):
                 if (
                     1 in topo_feature.keys()
-                    and type(topo_feature[1]) == int
+                    and type(topo_feature[1]) is int
                     and topo_feature[1] >= 0
                 ):
                     continue
@@ -164,7 +164,6 @@ class LossGuiderSegmentationComponents(LossGuiderBetti):
         self.num_classes = self.loss_guidance_config.pseudo_gt_generator.num_classes
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
-
         prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)
         prediction = torch.zeros_like(x_softmax).scatter_(1, prediction, 1)
 

@@ -1,0 +1,7 @@
+loss_fns_config:
+  BirthDeathIntervalLoss:
+    scale: 1.0
+    args:
+      alpha: 0.5
+      beta: 0.5
+log_loss_parts: False

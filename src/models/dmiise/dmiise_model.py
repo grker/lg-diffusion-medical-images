@@ -1,14 +1,10 @@
-from torch.utils.data.dataset import Dataset
-from torch.utils.data.dataloader import DataLoader
-from torch.utils.data import random_split
-import torch.nn as nn
 import pytorch_lightning as pl
 from omegaconf import open_dict
 
-from utils.mask_transformer import BaseMaskMapping
-from utils.hydra_config import SegmentationConfig
 from models.base_segmentation import BaseSegmentation
 from models.dmiise.diffusion import DDPM, DDPM_DPS
+from utils.hydra_config import SegmentationConfig
+from utils.mask_transformer import BaseMaskMapping
 
 
 class DmiiseSegmentation(BaseSegmentation):
@@ -19,8 +15,8 @@ class DmiiseSegmentation(BaseSegmentation):
     def create_segmentation_model(
         self, mask_transformer: BaseMaskMapping, num_classes: int
     ) -> pl.LightningModule:
-        from modules.unet import UNetModel
         from modules.timestep_basic_unet import TimestepsBasicUNet
+        from modules.unet import UNetModel
 
         if self.config.model.name == "unet_dmisse":
             model = UNetModel(self.config.model)
@@ -56,8 +52,8 @@ class DmiiseSegmentation(BaseSegmentation):
     def create_seg_model_args(
         self, mask_transformer: BaseMaskMapping, num_classes: int
     ):
-        from modules.unet import UNetModel
         from modules.timestep_basic_unet import TimestepsBasicUNet
+        from modules.unet import UNetModel
 
         model_args = {
             "mask_transformer": mask_transformer,
@@ -123,5 +119,5 @@ class DmiiseSegmentation(BaseSegmentation):
         if self.loss_guided:
             return DDPM_DPS
         else:
-            print(f"creating DDPM model")
+            print("creating DDPM model")
             return DDPM

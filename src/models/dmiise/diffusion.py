@@ -1,37 +1,34 @@
+import random
+import time
+
 import pytorch_lightning as pl
 import torch
-import math
-import random
-import wandb
-
 import torch.nn as nn
-
+from diffusers.schedulers import DDPMScheduler
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from diffusers.schedulers import DDPMScheduler
-from diffusers.optimization import get_cosine_schedule_with_warmup
 
-
-import guidance.loss_guider
+import wandb
+from guidance.loss_guider import LossGuider
+from utils.helper import unpack_batch
 from utils.hydra_config import (
     DiffusionConfig,
-    OptimizerConfig,
+    GuiderConfig,
     LossGuidedDiffusionConfig,
-    LossGuidanceConfig,
+    OptimizerConfig,
 )
-from utils.visualize import (
-    visualize_segmentation,
-    create_wandb_image,
-    visualize_mean_variance,
-    gif_over_timesteps,
-)
+from utils.mask_transformer import BaseMaskMapping
 from utils.metrics import (
     compute_and_log_metrics,
     generate_metrics_fn,
 )
-from utils.mask_transformer import BaseMaskMapping
-from utils.helper import unpack_batch, log_cuda_memory
-from guidance.loss_guider import LossGuider
+from utils.visualize import (
+    create_wandb_image,
+    gif_over_timesteps,
+    visualize_gradients,
+    visualize_mean_variance,
+    visualize_segmentation,
+)
 
 
 def scheduler_factory(
@@ -97,11 +94,10 @@ class DDPM(pl.LightningModule):
         batch_start_idx = 0
 
         flatt_values = torch.empty(0).to(device)
-        loss_fn = torch.nn.MSELoss(reduction="mean")
 
         while batch_start_idx < samples:
             end_idx = min(batch_start_idx + batch_size, samples)
-            images, masks = dataset[batch_start_idx:end_idx]
+            _, masks = dataset[batch_start_idx:end_idx]
             batch = masks.to(device)
 
             noise = torch.randn_like(batch, device=batch.device)
@@ -133,7 +129,9 @@ class DDPM(pl.LightningModule):
         assert (
             images.shape[0] == gt_masks.shape[0]
             and gt_masks.shape[0] == gt_train_masks.shape[0]
-        ), "Assertion Error: images, gt_masks and gt_train_masks need to have the same number of samples"
+        ), (
+            "Assertion Error: images, gt_masks and gt_train_masks need to have the same number of samples"
+        )
 
         return images, gt_masks, gt_train_masks
 
@@ -372,9 +370,9 @@ class DDPM_DPS(DDPM):
             model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
         )
 
-        self.loss_guider = self.initialize_guider(diffusion_config.loss_guidance)
-        self.starting_step = self.loss_guider.get_starting_step()
-        self.gamma = self.loss_guider.get_gamma()
+        self.loss_guider = self.initialize_guider(diffusion_config.loss_guidance.guider)
+        self.starting_step = diffusion_config.loss_guidance.starting_step
+        self.gamma = diffusion_config.loss_guidance.gamma
 
         metrics_fn_dict = generate_metrics_fn(
             diffusion_config.loss_guidance.guidance_metrics,
@@ -386,17 +384,15 @@ class DDPM_DPS(DDPM):
             self.starting_step,
         )
 
-    def initialize_guider(self, loss_guidance_config: LossGuidanceConfig):
+    def initialize_guider(self, guider_config: GuiderConfig):
         import guidance
 
-        print(f"loss_guidance_config: {loss_guidance_config}")
-        print(f"name guider: {loss_guidance_config.name}")
-        if hasattr(guidance, loss_guidance_config.name):
-            return getattr(guidance, loss_guidance_config.name)(loss_guidance_config)
+        print(f"loss_guidance_config: {guider_config}")
+        print(f"name guider: {guider_config.name}")
+        if hasattr(guidance, guider_config.name):
+            return getattr(guidance, guider_config.name)(guider_config)
         else:
-            raise ValueError(
-                f"PseudoGTGenerator {loss_guidance_config.name} not found!"
-            )
+            raise ValueError(f"PseudoGTGenerator {guider_config.name} not found!")
 
     @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
@@ -423,7 +419,10 @@ class DDPM_DPS(DDPM):
 
             # guided diffusion steps
             for t in tqdm(self.scheduler.timesteps[-self.starting_step : -1]):
+                start_time = time.time()
                 noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
+                end_time = time.time()
+                print(f"{t}:guided step time: {end_time - start_time}")
 
                 self.guidance_metrics.update(
                     self.mask_transformer.get_segmentation(
@@ -449,7 +448,7 @@ class DDPM_DPS(DDPM):
                 0,
             )
 
-            loss = self.loss_guider.guidance_loss(
+            self.loss_guider.guidance_loss(
                 noisy_mask,
                 0,
                 batch_idx,
@@ -514,16 +513,27 @@ class DDPM_DPS(DDPM):
 
         loss.backward()
         with torch.no_grad():
+            check_grads = torch.any(noisy_mask.grad, dim=(1, 2, 3))
+            print(f"check_grads: {check_grads}")
+
             noisy_mask_grads = noisy_mask.grad
-            # print(f"noisy mask max: {torch.max(noisy_mask_grads)}")
-            # print(f"noisy mask min: {torch.min(noisy_mask_grads)}")
-            # print(f"noisy mask mean: {torch.mean(noisy_mask_grads)}")
 
             new_noisy_mask = (
                 self.scheduler.step(
                     model_output=model_output, timestep=t, sample=noisy_mask
                 ).prev_sample
                 - self.gamma * noisy_mask_grads
+            )
+
+            random_idx = int(num_samples / 2)
+
+            visualize_gradients(
+                noisy_mask_grads[random_idx],
+                t,
+                batch_idx,
+                random_idx,
+                torch.clamp(model_output[random_idx], -1, 1),
+                commit=(t == 1),
             )
 
         # from utils.visualize import visualize_component_map
@@ -562,6 +572,21 @@ class DDPM_DPS(DDPM):
 
         model_output = model_output.detach().cpu()
         return noisy_mask
+
+    def normalize_noisy_mask(
+        self,
+        noisy_mask: torch.Tensor,
+        class_wise: bool = True,
+    ):
+        if class_wise:
+            dim = (2, 3)
+        else:
+            dim = (1, 2, 3)
+
+        min_vals = torch.amin(noisy_mask, dim=dim, keepdim=True)
+        max_vals = torch.amax(noisy_mask, dim=dim, keepdim=True)
+
+        return 2 * (noisy_mask - min_vals) / (max_vals - min_vals + 1e-8) - 1
 
 
 class GuidanceMetric:

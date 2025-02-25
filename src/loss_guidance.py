@@ -1,16 +1,16 @@
-import hydra
-import os
 import logging
-import wandb
-import torch
-import yaml
-import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
-from wandb import Api
-from omegaconf import OmegaConf
+import os
 
-from utils.hydra_config import LossGuidanceInferenceConfig
+import hydra
+import pytorch_lightning as pl
+import torch
+from omegaconf import OmegaConf
+from pytorch_lightning.loggers import WandbLogger
+
+import wandb
 from models.base_segmentation import create_segmentor
+from utils.hydra_config import LossGuidanceInferenceConfig
+from wandb import Api
 
 
 @hydra.main(
@@ -19,7 +19,6 @@ from models.base_segmentation import create_segmentor
     config_name="loss_guidance",
 )
 def main(config: LossGuidanceInferenceConfig):
-
     logging.getLogger("pytorch_lightning").setLevel(
         logging.INFO
     )  # suppress excessive logs
@@ -111,7 +110,7 @@ def main(config: LossGuidanceInferenceConfig):
         num_sanity_val_steps=0,
         inference_mode=False,
     )
-    print(f"start with the testing")
+    print("start with the testing")
     for rep in config.repetitions:
         print(f"testing with repetition {rep}")
         seg_model.repetitions_test = rep

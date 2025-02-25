@@ -1,5 +1,5 @@
-import torch
 import omegaconf
+import torch
 
 from betti_matching.BettiMatching import CubicalPersistence
 from utils.hydra_config import PseudoGTConfig, PseudoGTDim0_CompsConfig
@@ -214,12 +214,12 @@ class PseudoGTGeneratorBase:
 
             if (
                 0 in topo_feature.keys()
-                and type(topo_feature[0]) == int
+                and type(topo_feature[0]) is int
                 and topo_feature[0] >= 0
             ):
                 if (
                     1 in topo_feature.keys()
-                    and type(topo_feature[1]) == int
+                    and type(topo_feature[1]) is int
                     and topo_feature[1] >= 0
                 ):
                     continue
@@ -258,7 +258,6 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
             self.device = torch.device("cpu")
 
     def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
-
         if x_softmax.device != self.device:
             x_softmax = x_softmax.to(self.device)
 
@@ -315,7 +314,6 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
         filtered_component_map = component_map
 
         largest_value_in_map = torch.max(component_map)
-        largest_component = -1
         largest_component_size = 0
         components = []
 
@@ -325,7 +323,6 @@ class PGTSegGeneratorDim0(PseudoGTGeneratorBase):
 
             if component_size > largest_component_size:
                 largest_component_size = component_size
-                largest_component = largest_value_in_map
 
             components.append((largest_value_in_map, component_size))
 
@@ -499,7 +496,6 @@ class PseudoGTCycleBased(PseudoGTGeneratorBase):
 
 
 class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
-
     def __init__(self, pgt_config: PseudoGTDim0_CompsConfig):
         self.scaling_function = (
             lambda softmax, likelyhood: likelyhood_temperature_scaling(
@@ -535,7 +531,6 @@ class PseudoGTGeneratorDim0_Comps(PseudoGTGeneratorBase):
         if no_scaling:
             return likelihood
         else:
-            scaled_version = self.scaling_function(x_softmax, likelihood)
             return self.scaling_function(x_softmax, likelihood)
 
     def likelihood_map(self, class_probs: torch.Tensor, num_components: int):
@@ -606,7 +601,6 @@ def component_map(prediction: torch.Tensor, num_components: int):
     filtered_component_map = component_map
 
     largest_value_in_map = torch.max(component_map)
-    largest_component = -1
     largest_component_size = 0
     components = []
 
@@ -616,7 +610,6 @@ def component_map(prediction: torch.Tensor, num_components: int):
 
         if component_size > largest_component_size:
             largest_component_size = component_size
-            largest_component = largest_value_in_map
 
         components.append((largest_value_in_map, component_size))
 

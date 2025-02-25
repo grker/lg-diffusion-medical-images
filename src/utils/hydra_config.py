@@ -1,7 +1,3 @@
-from dataclasses import dataclass
-from typing import Union
-
-
 class ModelConfig:
     name: str
     pass
@@ -28,7 +24,7 @@ class PersistanceHomologyConfig:
 
 class TransformConfig:
     apply_to_mask: bool
-    args: dict
+    args: dict | None
 
 
 class PreprocessorConfig:
@@ -182,13 +178,36 @@ class PseudoGTDim0_CompsConfig(PseudoGTConfig):
     analysis: Dim0_ThresholdAnalysisConfig
 
 
-class LossGuidanceConfig:
+class GuiderConfig:
     name: str
+    num_classes: int
+    loss: LossConfig
+
+
+class BettiGuiderConfig(GuiderConfig):
+    topo_features: dict
+
+
+class BettiSegmentationGuiderConfig(BettiGuiderConfig):
+    base_prob: float
+
+
+class BettiPersHomologyGuiderConfig(BettiGuiderConfig):
+    pass
+
+
+class BettiBirthDeathGuiderConfig(BettiPersHomologyGuiderConfig):
+    downsampling: bool
+    downsampling_factor: tuple[float, float]
+    downsampling_mode: str
+    modifier: str
+
+
+class LossGuidanceConfig:
     gamma: float
     starting_step: int
-    pseudo_gt_generator: PseudoGTConfig
     guidance_metrics: MetricsConfig
-    loss: LossConfig
+    guider: GuiderConfig
 
 
 class LossGuidedDiffusionConfig(DiffusionConfig):
@@ -212,7 +231,7 @@ class SegmentationConfig:
     optimizer: OptimizerConfig
     train: bool
     model_path: str
-    wandb_tags: list[str]
+    wandb_tags: list[str] | None
     seed: int
     validation_period: int
 

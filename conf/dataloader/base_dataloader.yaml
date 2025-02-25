@@ -3,4 +3,3 @@ val_batch_size: 256
 shuffle: True
 train_ratio: 0.8
 validation_ratio: 0.1
-

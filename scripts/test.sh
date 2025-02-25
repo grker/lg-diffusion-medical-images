@@ -7,7 +7,7 @@
 #SBATCH --error=/data/%u/master_thesis/jobs/%j.err # where to store error messages
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=3G
-#SBATCH --gpus=1
+#SBATCH --gpus=0
 
 
 source /etc/profile.d/lmod.sh
@@ -69,10 +69,8 @@ export HYDRA_FULL_ERROR=1
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-python main.py project_name=dmiise diffusion.device=gpu 
+python test.py
 
 rm -rf $TMPDIR
 
 exit 0
-
-

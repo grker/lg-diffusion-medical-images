@@ -1,7 +1,23 @@
-import torch
 import monai.losses
+import torch
 
+import loss
 from utils.hydra_config import LossConfig
+
+
+def single_loss_fn(config: LossConfig):
+    name = list(config.loss_fns_config.keys())[0]
+    items = config.loss_fns_config[name]
+    args = items.args if items.args is not None else {}
+
+    if hasattr(torch.nn, name):
+        return getattr(torch.nn, name)(**args)
+    elif hasattr(monai.losses, name):
+        return getattr(monai.losses, name)(**args)
+    elif hasattr(loss, name):
+        return getattr(loss, name)(**args)
+    else:
+        raise ValueError(f"Unknown loss function {name}")
 
 
 def generate_loss_fns(config: LossConfig):
@@ -16,6 +32,8 @@ def generate_loss_fns(config: LossConfig):
             loss_fns[name] = getattr(torch.nn, name)(**args)
         elif hasattr(monai.losses, name):
             loss_fns[name] = getattr(monai.losses, name)(**args)
+        elif hasattr(loss, name):
+            loss_fns[name] = getattr(loss, name)(**args)
         else:
             raise ValueError(f"Unknown loss function {name}")
 
@@ -24,7 +42,7 @@ def generate_loss_fns(config: LossConfig):
     if loss_fns.keys():
         return loss_fns, scales
     else:
-        raise Exception(f"No Loss Function defined")
+        raise NotImplementedError("No Loss Function defined")
 
 
 class CustomLoss(torch.nn.Module):
@@ -43,12 +61,9 @@ class CustomLoss(torch.nn.Module):
         logger=None,
         phase: str = None,
     ):
-        assert (
-            torch.equal(
-                torch.Tensor(list(prediction.shape)), torch.Tensor(list(target.shape))
-            ),
-            "Shape of prediction and target have to match!",
-        )
+        assert torch.equal(
+            torch.Tensor(list(prediction.shape)), torch.Tensor(list(target.shape))
+        ), "Shape of prediction and target have to match!"
 
         loss = torch.zeros(1, device=prediction.device)
         for loss_name, loss_fn in self.loss_fns.items():

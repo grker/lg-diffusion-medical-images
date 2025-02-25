@@ -17,3 +17,5 @@ __pycache__/
 
 # Ignore all .pyo files (compiled Python files for optimized mode)
 *.pyo
+
+*.txt

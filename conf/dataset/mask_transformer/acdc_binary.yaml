@@ -1,5 +1,5 @@
 mask_type: binary
-dataset_mapping: 
+dataset_mapping:
   background: 0
   foreground: 1
 train_mapping:

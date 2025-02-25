@@ -1,12 +1,11 @@
-import monai.metrics
-import torch
 import logging
-from skimage.morphology import skeletonize
-from skimage.measure import label, regionprops
-from monai.networks.utils import one_hot
 
+import monai.metrics
 import numpy as np
-
+import torch
+from monai.networks.utils import one_hot
+from skimage.measure import label, regionprops
+from skimage.morphology import skeletonize
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ class ClassWiseDiceMetric(monai.metrics.DiceMetric):
         del kwargs["num_classes"]
         self.logging_names = [f"dice_class_{i}" for i in range(1, num_classes)]
 
-        if not "include_background" in kwargs or kwargs["include_background"]:
+        if "include_background" not in kwargs or kwargs["include_background"]:
             self.logging_names.insert(0, "dice_background")
 
         self.logging_names.append("DiceMetric")  # mean
@@ -84,7 +83,6 @@ class HausdorffDistanceMetric2(monai.metrics.HausdorffDistanceMetric):
         super().__init__(**kwargs)
 
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
-
         def one_hot_encode(
             tensor: torch.Tensor, one_hot_shape: tuple[int, int, int, int]
         ):
@@ -98,8 +96,6 @@ class HausdorffDistanceMetric2(monai.metrics.HausdorffDistanceMetric):
         if self.num_classes is None:
             logger.warning("num_classes not set, defaulting to 2")
             self.num_classes = 2
-
-        num_samples = y_pred.shape[0]
 
         one_hot_shape = (
             y_pred.shape[0],
@@ -155,7 +151,6 @@ class BettiNumberMetric:
             return self.betti_number_0_1(y_pred, y)
 
     def betti_number_0_1(self, y_pred: torch.Tensor, y: torch.Tensor):
-
         y_pred_np = y_pred.detach().cpu().numpy()
         y_np = y.detach().cpu().numpy()
 
@@ -165,8 +160,8 @@ class BettiNumberMetric:
             err_0 = 0.0
             err_1 = 0.0
             labels = self.extract_labels(y_pred_np[idx], y_np[idx])
-            for label in labels:
-                b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], label)
+            for labli in labels:
+                b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], labli)
                 err_0 += b0
                 err_1 += b1
 
@@ -189,13 +184,13 @@ class BettiNumberMetric:
             err_0 = 0.0
             err_1 = 0.0
             labels = self.extract_labels(y_pred_np[idx], y_np[idx])
-            for label in labels:
-                b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], label)
+            for labli in labels:
+                b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], labli)
                 err_0 += b0
                 err_1 += b1
 
-                scores[label, idx] = b0
-                scores[label + self.num_classes + 1, idx] = b1
+                scores[labli, idx] = b0
+                scores[labli + self.num_classes + 1, idx] = b1
 
             if len(labels) > 0:
                 scores[self.num_classes, idx] = err_0 / len(labels)
@@ -260,9 +255,9 @@ class BettiNumberMetric:
         :return: int: number of connected components
         """
         assert img.ndim == 2, "Image must be 2D"
-        assert (
-            img.ndim >= self.connectivity
-        ), "Connectivity must be less than or equal to the dimension of the image"
+        assert img.ndim >= self.connectivity, (
+            "Connectivity must be less than or equal to the dimension of the image"
+        )
 
         _, num_components = label(img, connectivity=self.connectivity, return_num=True)
         return num_components
@@ -293,8 +288,8 @@ class BettiNumberMetricOld:
             err_0 = 0.0
             err_1 = 0.0
             labels = self.extract_labels(y_pred_np[idx], y_np[idx])
-            for label in labels:
-                b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], label)
+            for labli in labels:
+                b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], labli)
                 err_0 += b0
                 err_1 += b1
 
@@ -363,9 +358,9 @@ class BettiNumberMetricOld:
         :return: int: number of connected components
         """
         assert img.ndim == 2, "Image must be 2D"
-        assert (
-            img.ndim >= self.connectivity
-        ), "Connectivity must be less than or equal to the dimension of the image"
+        assert img.ndim >= self.connectivity, (
+            "Connectivity must be less than or equal to the dimension of the image"
+        )
 
         _, num_components = label(img, connectivity=self.connectivity, return_num=True)
         return num_components
