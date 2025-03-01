@@ -1,5 +1,5 @@
 defaults:
-  - loss_guidance: loss_guidance_refactored
+  - loss_guidance: loss_guidance_base
   - metrics: class_wise_dice_metric
 
 wandb_username: difseg

@@ -384,6 +384,8 @@ class DDPM_DPS(DDPM):
             self.starting_step,
         )
 
+        self.visualize_gradients = diffusion_config.loss_guidance.visualize_gradients
+
     def initialize_guider(self, guider_config: GuiderConfig):
         import guidance
 
@@ -527,14 +529,15 @@ class DDPM_DPS(DDPM):
 
             random_idx = int(num_samples / 2)
 
-            visualize_gradients(
-                noisy_mask_grads[random_idx],
-                t,
-                batch_idx,
-                random_idx,
-                torch.clamp(model_output[random_idx], -1, 1),
-                commit=(t == 1),
-            )
+            if self.visualize_gradients:
+                visualize_gradients(
+                    noisy_mask_grads[random_idx],
+                    t,
+                    batch_idx,
+                    random_idx,
+                    torch.clamp(model_output[random_idx], -1, 1),
+                    commit=(t == 1),
+                )
 
         # from utils.visualize import visualize_component_map
 

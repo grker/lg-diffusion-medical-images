@@ -1,7 +1,0 @@
-defaults:
-  - guider: birth_death
-  - guidance_metrics: betti_metric
-  - _self_
-
-gamma: 0.1
-starting_step: 10

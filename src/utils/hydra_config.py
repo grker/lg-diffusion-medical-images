@@ -206,6 +206,7 @@ class BettiBirthDeathGuiderConfig(BettiPersHomologyGuiderConfig):
 class LossGuidanceConfig:
     gamma: float
     starting_step: int
+    visualize_gradients: bool
     guidance_metrics: MetricsConfig
     guider: GuiderConfig
 

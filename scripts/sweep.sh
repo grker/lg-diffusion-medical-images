@@ -3,7 +3,7 @@
 #SBATCH --mail-type=NONE # mail configuration: NONE, BEGIN, END, FAIL, REQUEUE, AL
 #SBATCH --output=/data/%u/master_thesis/jobs/%j.out # where to store the output (%j is the JOBID), subdirectory "jobs" must exist
 #SBATCH --error=/data/%u/master_thesis/jobs/%j.err # where to store error messages
-#SBATCH --time=08:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
@@ -69,7 +69,7 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 
-SWEEP_ID=86wud30a
+SWEEP_ID=v8gze87g
 
 wandb agent difseg/difseg/${SWEEP_ID}
 

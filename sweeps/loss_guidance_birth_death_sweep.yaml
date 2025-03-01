@@ -1,0 +1,23 @@
+project: difseg
+program: src/loss_guidance.py
+name: seg_comp_sweep
+method: grid
+metric:
+  goal: minimize
+  name: test_betti_number_0
+
+parameters:
+  run_id:
+    values: [29bjivsr]
+  loss_guidance.starting_step:
+    values: [30, 35, 40]
+  loss_guidance.gamma:
+    values: [-1500, -500, -100, 100, 500, 1500]
+
+
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args_no_hyphens}

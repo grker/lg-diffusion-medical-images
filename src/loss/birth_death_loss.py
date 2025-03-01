@@ -1,9 +1,11 @@
 import torch
 
+from utils.helper import check_topofeatures
+
 
 class BirthDeathLoss(torch.nn.Module):
-    def __init__(self, betti_numbers: dict, normalize_mode: str = "sum", **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, betti_numbers: dict, normalize_mode: str = "sum"):
+        super().__init__()
 
         self.good_intervals_0 = [betti_numbers[i][0] for i in range(len(betti_numbers))]
         self.good_intervals_1 = [betti_numbers[i][1] for i in range(len(betti_numbers))]
@@ -135,11 +137,23 @@ class BirthDeathLoss(torch.nn.Module):
 
 
 class BirthDeathIntervalLoss(torch.nn.Module):
-    def __init__(self, betti_numbers: dict, alpha: float = 0.5, beta: float = 0.5):
+    def __init__(
+        self,
+        num_classes: int,
+        betti_numbers: dict,
+        alpha: float = 0.5,
+        beta: float = 0.5,
+    ):
         super().__init__()
 
-        self.good_intervals_0 = [betti_numbers[i][0] for i in range(len(betti_numbers))]
-        self.good_intervals_1 = [betti_numbers[i][1] for i in range(len(betti_numbers))]
+        self.betti_numbers = check_topofeatures(betti_numbers, num_classes)
+
+        self.good_intervals_0 = [
+            self.betti_numbers[i][0] for i in range(len(self.betti_numbers))
+        ]
+        self.good_intervals_1 = [
+            self.betti_numbers[i][1] for i in range(len(self.betti_numbers))
+        ]
 
         print(f"comp 0: {self.good_intervals_0}")
         print(f"comp 1: {self.good_intervals_1}")
