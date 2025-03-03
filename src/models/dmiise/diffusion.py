@@ -420,7 +420,7 @@ class DDPM_DPS(DDPM):
             # guided diffusion steps
             for t in tqdm(self.scheduler.timesteps[-self.starting_step : -1]):
                 # start_time = time.time()
-                # noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
+                noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
                 # end_time = time.time()
                 # print(f"{t}:guided step time: {end_time - start_time}")
 
