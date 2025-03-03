@@ -96,8 +96,6 @@ class BirthDeathLoss(torch.nn.Module):
         ]
         good_intervals = torch.cat(good_intervals, dim=0)
 
-        print(f"intervals shape: {intervals.shape}")
-
         birth_indices_x = concated_intervals[:, 0, 0]
         birth_indices_y = concated_intervals[:, 0, 1]
         death_indices_x = concated_intervals[:, 1, 0]
@@ -189,10 +187,10 @@ class BirthDeathIntervalLoss(torch.nn.Module):
         else:
             loss_1 = 0
 
-        print(f"loss_0: {loss_0}")
-        print(f"loss_1: {loss_1}")
+        total_loss = self.alpha * loss_0 + (1 - self.alpha) * loss_1
+        print(f"loss_0: {loss_0}, loss_1: {loss_1}, total_loss: {total_loss}")
 
-        return self.alpha * loss_0 + (1 - self.alpha) * loss_1
+        return total_loss
 
     def _compute_interval_diff(
         self,

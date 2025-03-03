@@ -152,12 +152,13 @@ class Birth_Death_Guider(PersHomologyBettiGuidance):
     def guidance_loss(
         self, model_output: torch.Tensor, t: int = None, batch_idx: int = None
     ):
+        print(f"*** Timestep: {t} ***")
         if self.downsampling:
             model_output = self.downsample_model_output(
                 model_output, self.downsampling_factor, self.downsampling_mode
             )
 
-        x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
+        x_softmax = torch.softmax(model_output, dim=1)
 
         intervals_0, intervals_1 = self.pseudo_gt(
             x_softmax.detach(),
@@ -170,7 +171,6 @@ class Birth_Death_Guider(PersHomologyBettiGuidance):
             intervals_comp_0=intervals_0,
             intervals_comp_1=intervals_1,
         )
-        print(f"{t}: loss: {loss}", flush=True)
         return loss
 
     def downsample_model_output(

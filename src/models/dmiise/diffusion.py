@@ -1,6 +1,6 @@
 import random
-import time
 
+# import time
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -389,8 +389,6 @@ class DDPM_DPS(DDPM):
     def initialize_guider(self, guider_config: GuiderConfig):
         import guidance
 
-        print(f"loss_guidance_config: {guider_config}")
-        print(f"name guider: {guider_config.name}")
         if hasattr(guidance, guider_config.name):
             return getattr(guidance, guider_config.name)(guider_config)
         else:
@@ -421,10 +419,10 @@ class DDPM_DPS(DDPM):
 
             # guided diffusion steps
             for t in tqdm(self.scheduler.timesteps[-self.starting_step : -1]):
-                start_time = time.time()
-                noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
-                end_time = time.time()
-                print(f"{t}:guided step time: {end_time - start_time}")
+                # start_time = time.time()
+                # noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
+                # end_time = time.time()
+                # print(f"{t}:guided step time: {end_time - start_time}")
 
                 self.guidance_metrics.update(
                     self.mask_transformer.get_segmentation(
@@ -507,6 +505,9 @@ class DDPM_DPS(DDPM):
             torch.full((num_samples,), t, device=images.device),
         )
 
+        print(f"model_output max timestep {t}: {model_output.max()}")
+        print(f"model_output min timestep {t}: {model_output.min()}")
+
         loss = self.loss_guider.guidance_loss(
             model_output,
             t,
@@ -515,10 +516,10 @@ class DDPM_DPS(DDPM):
 
         loss.backward()
         with torch.no_grad():
-            check_grads = torch.any(noisy_mask.grad, dim=(1, 2, 3))
-            print(f"check_grads: {check_grads}")
-
             noisy_mask_grads = noisy_mask.grad
+
+            print(f"max noisy_mask_grads: {noisy_mask_grads.max()}")
+            print(f"min noisy_mask_grads: {noisy_mask_grads.min()}")
 
             new_noisy_mask = (
                 self.scheduler.step(
@@ -527,7 +528,17 @@ class DDPM_DPS(DDPM):
                 - self.gamma * noisy_mask_grads
             )
 
+            print(f"max new_noisy_mask: {new_noisy_mask.max()}")
+            print(f"min new_noisy_mask: {new_noisy_mask.min()}")
+
             random_idx = int(num_samples / 2)
+
+            print(
+                f"max random_idx noisy_mask_grads: {noisy_mask_grads[random_idx].max()}"
+            )
+            print(
+                f"min random_idx noisy_mask_grads: {noisy_mask_grads[random_idx].min()}"
+            )
 
             if self.visualize_gradients:
                 visualize_gradients(

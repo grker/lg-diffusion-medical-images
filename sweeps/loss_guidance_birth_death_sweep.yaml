@@ -1,6 +1,6 @@
 project: difseg
 program: src/loss_guidance.py
-name: seg_comp_sweep
+name: birth_death_sweep_2_downsampling
 method: grid
 metric:
   goal: minimize
@@ -9,10 +9,12 @@ metric:
 parameters:
   run_id:
     values: [29bjivsr]
+  loss_guidance.guider.downsampling:
+    values: [True]
   loss_guidance.starting_step:
-    values: [30, 35, 40]
+    values: [5, 10, 30, 50]
   loss_guidance.gamma:
-    values: [-1500, -500, -100, 100, 500, 1500]
+    values: [0.01, 0.1, 0.5, 1, 10]
 
 
 
