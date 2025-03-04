@@ -211,6 +211,11 @@ class LossGuidanceConfig:
     guider: GuiderConfig
 
 
+class LossGuidance3StepConfig(LossGuidanceConfig):
+    mode: str
+    last_step_unguided: bool
+
+
 class LossGuidedDiffusionConfig(DiffusionConfig):
     loss_guidance: LossGuidanceConfig
 

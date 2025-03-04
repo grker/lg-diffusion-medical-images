@@ -217,7 +217,7 @@ class BirthDeathIntervalLoss(torch.nn.Module):
 
             total_loss += sample_loss / num_classes
 
-        return total_loss
+        return total_loss / num_samples
 
     def interval_diff_sum(
         self, prediction: torch.Tensor, intervals: torch.Tensor, num_comps: int
@@ -245,13 +245,13 @@ class BirthDeathIntervalLoss(torch.nn.Module):
         interval_diff = (birth_values - death_values) ** 2
 
         loss = (
-            self.beta * (1 - interval_diff[:num_good_intervals].mean())
+            self.beta * (1 - interval_diff[:num_good_intervals]).sum()
             if num_good_intervals > 0
             else 0.0
         )
 
         loss += (
-            (1 - self.beta) * interval_diff[num_good_intervals:].mean()
+            (1 - self.beta) * interval_diff[num_good_intervals:].sum()
             if num_bad_intervals > 0
             else 0.0
         )

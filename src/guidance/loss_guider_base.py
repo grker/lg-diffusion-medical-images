@@ -38,7 +38,10 @@ class LossGuiderBetti(LossGuider):
 
         if guider_config.loss:
             self.loss_fn = single_loss_fn(guider_config.loss)
+            self.loss_name = next(iter(guider_config.loss.loss_fns_config.keys()))
+            print(f"loss_name: {self.loss_name}")
         else:
             from torch.nn import CrossEntropyLoss
 
             self.loss_fn = CrossEntropyLoss()
+            self.loss_name = "CrossEntropyLoss"

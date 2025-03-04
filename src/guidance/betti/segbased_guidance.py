@@ -110,6 +110,7 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
         pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
 
         loss = self.loss_fn(model_output, pseudo_gt)
+        print(f"Loss: {loss}")
         return loss
 
 

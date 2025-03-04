@@ -1,0 +1,10 @@
+defaults:
+  - guider: seg_comp
+  - guidance_metrics: betti_metric
+  - _self_
+
+gamma: 0.1
+starting_step: 10
+visualize_gradients: False
+mode: only_guided
+last_step_unguided: True

@@ -2,7 +2,7 @@ import pytorch_lightning as pl
 from omegaconf import open_dict
 
 from models.base_segmentation import BaseSegmentation
-from models.dmiise.diffusion import DDPM, DDPM_DPS
+from models.dmiise.diffusion import DDPM, DDPM_DPS_3Steps  # ,DDPM_DPS
 from utils.hydra_config import SegmentationConfig
 from utils.mask_transformer import BaseMaskMapping
 
@@ -29,7 +29,7 @@ class DmiiseSegmentation(BaseSegmentation):
         loss = self.create_loss()
         if self.loss_guided:
             if hasattr(self.config.diffusion, "loss_guidance"):
-                return DDPM_DPS(
+                return DDPM_DPS_3Steps(
                     model,
                     self.config.diffusion,
                     self.config.optimizer,
@@ -117,7 +117,7 @@ class DmiiseSegmentation(BaseSegmentation):
 
     def lightning_module(self):
         if self.loss_guided:
-            return DDPM_DPS
+            return DDPM_DPS_3Steps
         else:
             print("creating DDPM model")
             return DDPM
