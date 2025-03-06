@@ -155,14 +155,16 @@ class LikelihoodTempScalingConfig(ScalingFunctionConfig):
 
 
 class AnalysisConfig:
-    pass
+    name: str
 
 
-class Dim0_ThresholdAnalysisConfig(AnalysisConfig):
+class PolynomialAnalysisConfig(AnalysisConfig):
     num_bins: int
     poly_degree: int
     minimal_threshold: float
 
+class FixedThresholdAnalysisConfig(AnalysisConfig):
+    fixed_threshold: float
 
 class PseudoGTConfig:
     name: str
@@ -175,7 +177,7 @@ class PseudoGTConfig:
 
 class PseudoGTDim0_CompsConfig(PseudoGTConfig):
     scaling_function: LikelihoodTempScalingConfig
-    analysis: Dim0_ThresholdAnalysisConfig
+    analysis: AnalysisConfig
 
 
 class GuiderConfig:
@@ -201,6 +203,12 @@ class BettiBirthDeathGuiderConfig(BettiPersHomologyGuiderConfig):
     downsampling_factor: tuple[float, float]
     downsampling_mode: str
     modifier: str
+
+class Dim0_CompsScalerGuiderConfig(BettiPersHomologyGuiderConfig):
+    with_softmax: bool
+    scaling: bool
+    analysis: AnalysisConfig
+    scaling_function: LikelihoodTempScalingConfig
 
 
 class LossGuidanceConfig:

@@ -536,9 +536,6 @@ class DDPM_DPS(DDPM):
         with torch.no_grad():
             noisy_mask_grads = noisy_mask.grad
 
-            print(f"max noisy_mask_grads: {noisy_mask_grads.max()}")
-            print(f"min noisy_mask_grads: {noisy_mask_grads.min()}")
-
             new_noisy_mask = (
                 self.scheduler.step(
                     model_output=model_output, timestep=t, sample=noisy_mask
@@ -638,7 +635,6 @@ class DDPM_DPS_3Steps(DDPM_DPS):
 
     @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
-        print("using 3 steps mode val test step function")
         self.model.eval()
 
         images, gt_masks, gt_train_masks = unpack_batch(batch)
@@ -752,7 +748,6 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         last_step_unguided: bool,
     ):
         end_t = 1 if last_step_unguided else 0
-        print(f"current_t: {current_t}, end_t: {end_t}")
         for t in range(current_t, end_t - 1, -1):
             noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
 
@@ -802,7 +797,6 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         return_gradients: bool = False,
     ):
         noisy_mask = noisy_mask.requires_grad_(True)
-        print(f"noisy_mask enabled grad: {noisy_mask.requires_grad}")
 
         loss = self.loss_guider.guidance_loss(
             noisy_mask,
@@ -818,20 +812,8 @@ class DDPM_DPS_3Steps(DDPM_DPS):
 
         loss.backward()
 
-        # for name, param in self.model.named_parameters():
-        #     if param.grad is not None:
-        #         grad_sum = param.grad.sum().item()  # Sum of gradients
-        #         grad_size = param.grad.shape  # Size of gradient tensor
-        #         print(
-        #             f"Parameter: {name}, Gradient Sum: {grad_sum}, Size: {grad_size}, Mean: {param.grad.mean().item()}"
-        #         )
-        #     else:
-        #         print(f"Parameter: {name} has no gradient")
-
         with torch.no_grad():
             noisy_mask_grads = noisy_mask.grad
-            print(f"max noisy_mask_grads: {noisy_mask_grads.max()}")
-            print(f"min noisy_mask_grads: {noisy_mask_grads.min()}")
             new_noisy_mask = (
                 noisy_mask - (self.gamma if gamma is None else gamma) * noisy_mask_grads
             )

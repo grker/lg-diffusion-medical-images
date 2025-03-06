@@ -40,6 +40,8 @@ class BirthDeathLoss(torch.nn.Module):
         else:
             loss_1 = 0
 
+        print(f"birth death loss: loss_0: {loss_0}, loss_1: {loss_1}, total_loss: {loss_0 + loss_1}")
+
         return loss_0 + loss_1
 
     def _compute_interval_diff(

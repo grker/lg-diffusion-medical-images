@@ -4,11 +4,13 @@ from betti_matching.BettiMatching import CubicalPersistence
 from utils.hydra_config import (
     BettiBirthDeathGuiderConfig,
     BettiPersHomologyGuiderConfig,
+    Dim0_CompsScalerGuiderConfig,
 )
 
 from ..loss_guider_base import LossGuiderBetti
 from ..utils import (
     likelyhood_temperature_scaling,
+    max_min_normalization
 )
 
 
@@ -24,25 +26,41 @@ class PersHomologyBettiGuidance(LossGuiderBetti):
 class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
     # TODO: refactor it
 
-    def __init__(self, guider_config: BettiPersHomologyGuiderConfig):
+    def __init__(self, guider_config: Dim0_CompsScalerGuiderConfig):
         super().__init__(guider_config)
-
-        pgt_config = guider_config
-
         self.scaling_function = (
             lambda softmax, likelyhood: likelyhood_temperature_scaling(
-                softmax, likelyhood, pgt_config.scaling_function.alpha
+                softmax, likelyhood, guider_config.scaling_function.alpha
             )
         )
-        self.analysis = pgt_config.analysis
-        self.fixed_threshold = 0.4
-        self.num_classes = pgt_config.num_classes
 
-        super().__init__(pgt_config)
+        self.analysis_config = guider_config.analysis
+        self.num_classes = guider_config.num_classes
+        self.with_softmax = guider_config.with_softmax
+        self.scaling = guider_config.scaling
+
+        super().__init__(guider_config)
+
+
+    def fixed_threshold_analysis(self, cp: CubicalPersistence, num_components: int):
+        if self.analysis_config.fixed_threshold:
+
+            return self.analysis_config.fixed_threshold
+        else:
+            raise ValueError("No fixed threshold provided")
+        
+
+    def polynomial_threshold_analysis(self, cp: CubicalPersistence, num_components: int):
+        intervals_and_threshold = cp.threshold_analysis_dim0_components(
+            num_components=num_components,
+            num_bins=self.analysis.num_bins,
+            degree=self.analysis.poly_degree,
+            minimal_threshold=self.analysis.minimal_threshold,
+        )
+        pass
 
     def pseudo_gt(
-        self, x_softmax: torch.Tensor, t: int, batch_idx: int, no_scaling: bool = False
-    ):
+        self, x_softmax: torch.Tensor, t: int, batch_idx: int):
         """
         Generate a pseudo ground truth for the given softmax output.
         params:
@@ -60,7 +78,7 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
                 likelihood[sample_idx, class_idx] = self.likelihood_map(
                     x_softmax[sample_idx, class_idx], topo_feature_0
                 )
-        if no_scaling:
+        if not self.scaling:
             return likelihood
         else:
             return self.scaling_function(x_softmax, likelihood)
@@ -84,19 +102,26 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
             construction="V",
             birth_UF=True,
         )
-        intervals_and_threshold = cp.threshold_analysis_dim0_components(
-            num_components=num_components,
-            num_bins=self.analysis.num_bins,
-            degree=self.analysis.poly_degree,
-            minimal_threshold=self.analysis.minimal_threshold,
-        )
+
+
+        # define the threshold
+        if self.analysis_config.name == "fixed_threshold":
+            intervals_and_threshold = cp.fixed_threshold_analysis(num_components, self.analysis_config.fixed_threshold)
+        elif self.analysis_config.name == "polynomial":
+            intervals_and_threshold = cp.threshold_analysis_dim0_components(
+                num_components=num_components,
+                num_bins=self.analysis_config.num_bins,
+                degree=self.analysis_config.poly_degree,
+                minimal_threshold=self.analysis_config.minimal_threshold,
+            )
+        else:
+            raise ValueError(f"Unknown analysis type: {self.analysis_config.name}")
+        
 
         for interval, threshold in intervals_and_threshold:
             print(
                 f"using interval: {interval}, threshold: {threshold} for copmonent map"
             )
-            print(f"using fixed threshold of: {self.fixed_threshold}")
-            threshold = self.fixed_threshold
             component_map = cp.component_map(
                 threshold, interval[0], base_prob=0.1, device=device
             )
@@ -104,6 +129,21 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
             likelihood = torch.max(likelihood, component_map)
 
         return likelihood
+    
+
+    def guidance_loss(self, model_output: torch.Tensor, t: int, batch_idx: int):
+        model_output = max_min_normalization(model_output)
+
+        if self.with_softmax:
+            x_softmax = torch.softmax(model_output, dim=1)
+        else:
+            x_softmax = model_output
+        
+        pseudo_gt = self.pseudo_gt(x_softmax, t, batch_idx)
+        loss = self.loss_fn(x_softmax, pseudo_gt)
+
+        return loss, pseudo_gt
+
 
 
 class Birth_Death_Guider(PersHomologyBettiGuidance):
@@ -158,6 +198,7 @@ class Birth_Death_Guider(PersHomologyBettiGuidance):
                 model_output, self.downsampling_factor, self.downsampling_mode
             )
 
+        model_output = max_min_normalization(model_output)
         x_softmax = torch.softmax(model_output, dim=1)
 
         intervals_0, intervals_1 = self.pseudo_gt(
@@ -187,7 +228,7 @@ class Birth_Death_Guider(PersHomologyBettiGuidance):
             mode=mode,
             align_corners=False,
         )
-
+    
 
 class Birth_Death_Guider_Dim0(Birth_Death_Guider):
     def __init__(self, guider_config: BettiBirthDeathGuiderConfig):

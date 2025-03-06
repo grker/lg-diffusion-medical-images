@@ -102,6 +102,7 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
 
         likelihood = binary_component_map * x_softmax
         likelihood = torch.where(likelihood > 0, likelihood, self.base_prob)
+        # likelihood = binary_component_map
 
         return likelihood
 
@@ -159,7 +160,6 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
 
         likelihood = binary_component_map * x_softmax
         likelihood = torch.where(likelihood > 0, likelihood, self.base_prob)
-
         return likelihood
 
     def holes_map(self, class_prediction: torch.Tensor):
@@ -272,4 +272,4 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
         pseudo_gt = self.pseudo_gt(x_softmax, t, batch_idx)
 
         loss = self.loss_fn(model_output, pseudo_gt)
-        return loss
+        return loss, pseudo_gt
