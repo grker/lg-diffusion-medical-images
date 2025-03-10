@@ -57,14 +57,19 @@ class BaseSegmentation:
         :return: Dataset
         """
         print(f"Creating dataset {config.name}")
+
         if config.name == "acdc":
-            from dataset.acdc_dataset import ACDCDataset
+            from dataset import ACDCDataset
 
             return ACDCDataset(config)
         elif config.name == "m2nist":
-            from dataset.mnist import M2NISTDataset
+            from dataset import M2NISTDataset
 
             return M2NISTDataset(config)
+        elif config.name == "mnist_label":
+            from dataset import MNISTLabelDataset
+
+            return MNISTLabelDataset(config)
         else:
             raise NotImplementedError(f"Dataset {config.name} not implemented")
 

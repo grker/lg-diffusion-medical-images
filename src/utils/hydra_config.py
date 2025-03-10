@@ -131,7 +131,7 @@ class LossConfig:
 
 
 class MetricsConfig:
-    metric_fns_config: dict
+    metric_fns_config: dict[str, dict]
 
 
 class SchedulerConfig:
@@ -163,8 +163,10 @@ class PolynomialAnalysisConfig(AnalysisConfig):
     poly_degree: int
     minimal_threshold: float
 
+
 class FixedThresholdAnalysisConfig(AnalysisConfig):
     fixed_threshold: float
+
 
 class PseudoGTConfig:
     name: str
@@ -204,6 +206,7 @@ class BettiBirthDeathGuiderConfig(BettiPersHomologyGuiderConfig):
     downsampling_mode: str
     modifier: str
 
+
 class Dim0_CompsScalerGuiderConfig(BettiPersHomologyGuiderConfig):
     with_softmax: bool
     scaling: bool
@@ -226,6 +229,15 @@ class LossGuidance3StepConfig(LossGuidanceConfig):
 
 class LossGuidedDiffusionConfig(DiffusionConfig):
     loss_guidance: LossGuidanceConfig
+
+
+class MetricsHandlerConfig:
+    standard_metrics: MetricsConfig
+    topo_metrics: MetricsConfig
+
+
+class LossGuidedMetricsHandlerConfig(MetricsHandlerConfig):
+    guided_step_metrics: MetricsConfig
 
 
 # Main Configs (configs passed to main functions)

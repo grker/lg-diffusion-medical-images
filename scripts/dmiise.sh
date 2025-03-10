@@ -69,6 +69,6 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 
-python src/main.py project_name=dmiise validation_period=20 trainer.max_epochs=300 dataloader.batch_size=64 dataloader.val_batch_size=128 diffusion=sample_diffusion dataset/mask_transformer=acdc_multi diffusion.repetitions=1 diffusion.repetitions_test=15 dataset.mask_transformer.train_switch=False dataset.mask_transformer.ensemble_mode=mean model.name=basic_unet metrics=class_wise_dice_metric
+python src/main.py project_name=dmiise validation_period=10 trainer.max_epochs=150 dataloader.batch_size=256 dataloader.val_batch_size=512 diffusion=sample_diffusion dataset=mnist_labeled diffusion.repetitions=1 diffusion.repetitions_test=15 dataset.mask_transformer.train_switch=False dataset.mask_transformer.ensemble_mode=mean model.name=basic_unet metrics=binary_metric
 
 # python main.py trainer.max_epochs=100 dataloader.batch_size=64 dataloader.val_batch_size=64 dataset/mask_transformer=acdc_multi

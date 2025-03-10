@@ -23,6 +23,7 @@ from utils.metrics import (
     compute_and_log_metrics,
     generate_metrics_fn,
 )
+from utils.metrics_wrapper import DigitBettiNumberMetric
 from utils.visualize import (
     create_wandb_image,
     gif_over_timesteps,
@@ -60,6 +61,8 @@ class DDPM(pl.LightningModule):
     ):
         super().__init__()
 
+        print("Creating DDPM model")
+
         self.create_gif_over_timesteps = False
         self.scheduler = DDPMScheduler(
             num_train_timesteps=diffusion_config.noise_steps,
@@ -87,6 +90,12 @@ class DDPM(pl.LightningModule):
         self.mask_transformer = mask_transformer
         self.repetitions_test = diffusion_config.repetitions_test
         self.num_classes = mask_transformer.get_num_classes()
+
+        self.betti_digit_metric = DigitBettiNumberMetric(
+            connectivity=1,
+            num_labels=10,
+            include_background=False,
+        )
 
         self.loss_fn = loss
 
@@ -173,7 +182,7 @@ class DDPM(pl.LightningModule):
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
 
-        images, gt_masks, gt_train_masks, _ = unpack_batch(batch, "test")
+        images, gt_masks, gt_train_masks, labels = unpack_batch(batch, "test")
         num_samples = images.shape[0]
         reps = self.repetitions_test if phase == "test" else self.repetitions
 
@@ -233,6 +242,14 @@ class DDPM(pl.LightningModule):
                 compute_and_log_metrics(
                     self.metrics, seg_mask, gt_masks, phase, self.log
                 )
+
+            scores = self.betti_digit_metric(seg_mask, labels)
+            self.log(
+                f"{phase}_{self.betti_digit_metric.logging_names[0]}", scores[0].mean()
+            )
+            self.log(
+                f"{phase}_{self.betti_digit_metric.logging_names[1]}", scores[1].mean()
+            )
 
             # Visualization
             index = random.randint(0, num_samples - 1)

@@ -1,0 +1,9 @@
+defaults:
+  - mask_transformer: mnist_binary
+  - _self_
+
+name: mnist_label
+data_path: data/MNIST_modified
+image_size: null
+normalize: True
+mode: bilinear

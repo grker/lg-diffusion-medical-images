@@ -140,7 +140,6 @@ class M2NISTDataset(Dataset):
         return self.data.shape[3]
 
 
-
 class MNISTLabelDataset(Dataset):
     images: torch.Tensor
     gt: torch.Tensor
@@ -148,27 +147,49 @@ class MNISTLabelDataset(Dataset):
     labels: torch.Tensor
 
     def __init__(self, config: DatasetConfig):
-        images = torch.from_numpy(np.load(os.path.join(config.data_path, "val_images.npy")))
-        masks = torch.from_numpy(np.load(os.path.join(config.data_path, "val_masks.npy")))
-        self.labels = torch.from_numpy(np.load(os.path.join(config.data_path, "val_labels.npy")))
+        images = torch.from_numpy(np.load(os.path.join(config.data_path, "images.npy")))
+        masks = torch.from_numpy(np.load(os.path.join(config.data_path, "masks.npy")))
+        self.labels = (
+            torch.from_numpy(np.load(os.path.join(config.data_path, "labels.npy")))
+            .squeeze(1)
+            .to(torch.int64)
+        )
+        self.labels = torch.where(self.labels > 9, -1, self.labels)
+
+        print(f"labels shape: {self.labels.shape}")
+        print(f"label max: {self.labels.max()}")
+        print(f"label min: {self.labels.min()}")
 
         self.mask_transformer = generate_mask_mapping(config.mask_transformer)
 
-        self.images = self.prepare_data(data=images, image_size=config.image_size, mode=config.mode, normalize=config.normalize)
+        self.images = self.prepare_data(
+            data=images,
+            image_size=config.image_size,
+            mode=config.mode,
+            normalize=config.normalize,
+        )
         self.gt = self.mask_transformer.dataset_to_gt_mask(
             self.prepare_data(
                 data=masks,
                 image_size=config.image_size,
                 mode=config.mode,
-                normalize=False
+                normalize=False,
             )
         )
         self.gt_train = self.mask_transformer.gt_to_train_mask(self.gt)
+        print(f"gt shape: {self.gt.shape}")
+        print(f"images shape: {self.images.shape}")
 
-                
+    def prepare_data(
+        self,
+        data: torch.Tensor,
+        image_size: tuple[int, int] = None,
+        mode: str = "bilinear",
+        normalize: bool = False,
+    ):
+        while len(data.shape) > 4:
+            data = data.squeeze()
 
-    
-    def prepare_data(self, data: torch.Tensor, image_size: tuple[int, int] = None, mode: str = "bilinear", normalize: bool = False):
         if image_size is not None:
             resize_fn = Resize(spatial_size=image_size, mode=mode)
             data = resize_fn(data)
@@ -177,13 +198,13 @@ class MNISTLabelDataset(Dataset):
             data = data / 255.0
 
         return data.type(torch.float32).unsqueeze(1)
-    
+
     def __len__(self):
         return self.images.shape[0]
 
     def __getitem__(self, idx):
         return self.images[idx], self.gt[idx], self.gt_train[idx], self.labels[idx]
-    
+
     def get_image_size(self):
         return self.images.shape[1:]
 
@@ -192,7 +213,3 @@ class MNISTLabelDataset(Dataset):
 
     def get_image_width(self):
         return self.images.shape[3]
-    
-
-    
-    

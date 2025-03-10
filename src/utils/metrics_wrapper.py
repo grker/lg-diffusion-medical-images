@@ -129,14 +129,18 @@ class BettiNumberMetric:
         self.include_background = kwargs.get("include_background", False)
 
         self.class_wise = kwargs.get("class_wise", False)
+
+        start = 0 if self.include_background else 1
+        self.offset = self.num_classes - start + 1
+
         if self.class_wise:
             logging_names_0 = [
-                f"betti_number_0_class_{i}" for i in range(self.num_classes)
+                f"betti_number_0_class_{i}" for i in range(start, self.num_classes)
             ]
             logging_names_0.append("betti_number_0")
 
             logging_names_1 = [
-                f"betti_number_1_class_{i}" for i in range(self.num_classes)
+                f"betti_number_1_class_{i}" for i in range(start, self.num_classes)
             ]
             logging_names_1.append("betti_number_1")
 
@@ -189,17 +193,23 @@ class BettiNumberMetric:
                 err_0 += b0
                 err_1 += b1
 
-                scores[labli, idx] = b0
-                scores[labli + self.num_classes + 1, idx] = b1
+                scores[self.map_label_to_idx(labli, 0), idx] = b0
+                scores[self.map_label_to_idx(labli, 1), idx] = b1
 
             if len(labels) > 0:
-                scores[self.num_classes, idx] = err_0 / len(labels)
+                scores[self.offset - 1, idx] = err_0 / len(labels)
                 scores[-1, idx] = err_1 / len(labels)
             else:
-                scores[self.num_classes, idx] = 0.0
+                scores[self.offset - 1, idx] = 0.0
                 scores[-1, idx] = 0.0
 
         return scores
+
+    def map_label_to_idx(self, label: int, dim: int = 0):
+        if not self.include_background:
+            label -= 1
+
+        return label + (self.offset if dim == 1 else 0)
 
     def betti_number_per_label(self, pred: np.ndarray, gt: np.ndarray, label: int):
         label_pred = (pred == label).squeeze(0)
@@ -384,3 +394,62 @@ class BettiNumberMetric_1(BettiNumberMetricOld):
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
         _, error = super().__call__(y_pred, y)
         return error
+
+
+class DigitBettiNumberMetric(BettiNumberMetric):
+    def __init__(
+        self,
+        connectivity: int = 1,
+        num_labels: int = 10,
+        include_background: bool = False,
+    ):
+        self.connectivity = connectivity
+        self.num_labels = num_labels
+        self.include_background = include_background
+
+        self.logging_names = [
+            "digit_betti_number_labels_0",
+            "digit_betti_number_labels_1",
+        ]
+        self.betti_numbers_0 = torch.tensor([1] * num_labels)
+        self.betti_numbers_1 = torch.tensor([1, 0, 0, 0, 1, 0, 1, 0, 2, 1])
+
+    def __call__(self, y_pred: torch.Tensor, labels: torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
+        labels = labels.detach().cpu()
+        scores = torch.zeros((2, y_pred.shape[0]), device="cpu")
+
+        betti_0_per_sample, betti_1_per_sample = self.get_betti_numbers(labels)
+
+        for idx in range(y_pred.shape[0]):
+            b0, b1 = self.betti_number_per_pred(y_pred[idx])
+            scores[0, idx] = abs(b0 - betti_0_per_sample[idx])
+            scores[1, idx] = abs(b1 - betti_1_per_sample[idx])
+
+        return scores
+
+    def get_betti_numbers(self, labels):
+        """
+        This function returns the betti numbers for each sample in the batch. This is achieved by summing the betti numbers of the labels.
+        params:
+            labels: torch.Tensor, shape (batch_size, num_labels)
+        returns:
+            betti_0_per_label: torch.Tensor, shape (batch_size,)
+            betti_1_per_label: torch.Tensor, shape (batch_size,)
+        """
+        betti_numbers_0 = self.betti_numbers_0.to(labels.device)
+        betti_numbers_1 = self.betti_numbers_1.to(labels.device)
+
+        betti_0_per_sample = (betti_numbers_0[labels] * (labels >= 0)).sum(dim=1)
+        betti_1_per_sample = (betti_numbers_1[labels] * (labels >= 0)).sum(dim=1)
+
+        return betti_0_per_sample.numpy(), betti_1_per_sample.numpy()
+
+    def betti_number_per_pred(self, pred: torch.Tensor):
+        pred = (pred == 1).squeeze(0)
+
+        if not np.any(pred):
+            return 0, 0
+
+        b0, b1 = self.betti_numbers_image(pred)
+        return b0, b1
