@@ -139,7 +139,7 @@ class DDPM(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         self.model.train()
         self.log("learning rate", self.trainer.optimizers[0].param_groups[0]["lr"])
-        images, gt_masks, gt_train_masks = unpack_batch(batch)
+        images, gt_masks, gt_train_masks = unpack_batch(batch, "train")
         num_samples = images.shape[0]
 
         noise = torch.randn_like(gt_train_masks, device=gt_train_masks.device)
@@ -173,7 +173,7 @@ class DDPM(pl.LightningModule):
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
 
-        images, gt_masks, gt_train_masks = unpack_batch(batch)
+        images, gt_masks, gt_train_masks, _ = unpack_batch(batch, "test")
         num_samples = images.shape[0]
         reps = self.repetitions_test if phase == "test" else self.repetitions
 

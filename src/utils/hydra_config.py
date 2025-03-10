@@ -69,7 +69,7 @@ class DatasetConfig:
     image_size: tuple[int, int]
     normalize: bool
     mode: str
-    mask_transformer: MaskTransformerConfig
+    mask_transformer: MaskTransformerConfig | None
 
 
 class DataloaderConfig:

@@ -24,6 +24,34 @@ def unpack_batch(batch):
     return images, gt_masks, gt_train_masks
 
 
+def unpack_batch(batch, phase: str="train"):
+    images, gt_masks, gt_train_masks, guidance_gt = None, None, None, None
+
+    if len(batch) == 3:
+        images, gt_masks, gt_train_masks = batch
+    elif len(batch) == 4:
+        images, gt_masks, gt_train_masks, guidance_gt = batch
+    else:
+        raise ValueError(
+            f"Batch has {len(batch)} to unpack. A batch can only have 3 or 4 values to unpack."
+        )
+    
+    assert (
+        images.shape[0] == gt_masks.shape[0]
+        and gt_masks.shape[0] == gt_train_masks.shape[0]
+    ), (
+        "Assertion Error: images, gt_masks and gt_train_masks need to have the same number of samples"
+    )
+
+    if phase == "train":
+        return images, gt_masks, gt_train_masks
+    elif phase == "test":
+        return images, gt_masks, gt_train_masks, guidance_gt
+    else:
+        raise ValueError(f"Invalid phase: {phase}. Choose between 'train' and 'test'.")
+    
+    
+
 def log_cuda_memory(stage: str, flush: bool = False) -> None:
     """
     Logs the current cuda memory usage.
