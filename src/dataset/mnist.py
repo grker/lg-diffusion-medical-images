@@ -145,6 +145,7 @@ class MNISTLabelDataset(Dataset):
     gt: torch.Tensor
     gt_train: torch.Tensor
     labels: torch.Tensor
+    topo_infos: list[str] = ["labels"]
 
     def __init__(self, config: DatasetConfig):
         images = torch.from_numpy(np.load(os.path.join(config.data_path, "images.npy")))
@@ -155,10 +156,6 @@ class MNISTLabelDataset(Dataset):
             .to(torch.int64)
         )
         self.labels = torch.where(self.labels > 9, -1, self.labels)
-
-        print(f"labels shape: {self.labels.shape}")
-        print(f"label max: {self.labels.max()}")
-        print(f"label min: {self.labels.min()}")
 
         self.mask_transformer = generate_mask_mapping(config.mask_transformer)
 
@@ -177,8 +174,6 @@ class MNISTLabelDataset(Dataset):
             )
         )
         self.gt_train = self.mask_transformer.gt_to_train_mask(self.gt)
-        print(f"gt shape: {self.gt.shape}")
-        print(f"images shape: {self.images.shape}")
 
     def prepare_data(
         self,
@@ -203,7 +198,12 @@ class MNISTLabelDataset(Dataset):
         return self.images.shape[0]
 
     def __getitem__(self, idx):
-        return self.images[idx], self.gt[idx], self.gt_train[idx], self.labels[idx]
+        return (
+            self.images[idx],
+            self.gt[idx],
+            self.gt_train[idx],
+            {"labels": self.labels[idx]},
+        )
 
     def get_image_size(self):
         return self.images.shape[1:]
@@ -213,3 +213,6 @@ class MNISTLabelDataset(Dataset):
 
     def get_image_width(self):
         return self.images.shape[3]
+
+    def get_topo_infos(self):
+        return self.topo_infos

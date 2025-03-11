@@ -8,12 +8,12 @@ from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 
 from loss import CustomLoss
+from metrics import MetricsHandler
 from utils.hydra_config import (
     DataloaderConfig,
     DatasetConfig,
     SegmentationConfig,
 )
-from utils.metrics import generate_metrics_fn
 
 
 def create_segmentor(config: SegmentationConfig, **kwargs: dict):
@@ -31,10 +31,14 @@ def create_segmentor(config: SegmentationConfig, **kwargs: dict):
 
 
 class BaseSegmentation:
+    config: SegmentationConfig
+    dataset_provided_topo_infos: list[str]
+
     def __init__(self, config: SegmentationConfig):
         super().__init__()
         self.config = config
         self.device = self.set_device()
+        self.dataset_provided_topo_infos = []
 
     def set_device(self) -> str:
         if self.config.trainer.accelerator is None:
@@ -46,6 +50,9 @@ class BaseSegmentation:
                 return "cpu"
 
         return self.config.trainer.accelerator
+
+    def set_dataset_provided_topo_infos(self, topo_infos: list[str]):
+        self.dataset_provided_topo_infos = topo_infos
 
     def create_dataset(self, config: DatasetConfig) -> Dataset:
         """
@@ -114,17 +121,19 @@ class BaseSegmentation:
         :return: tuple[Dataset, DataLoader]
         """
         dataset = self.create_dataset(self.config.dataset)
+        self.set_dataset_provided_topo_infos(dataset.get_topo_infos())
         return dataset, self.create_dataloaders(self.config.dataloader, dataset)
 
-    def create_metrics_fn(self, num_classes: int = 2) -> dict[str, Callable]:
+    def create_metric_handler(self) -> dict[str, Callable]:
         """
         Creates a metrics function from a config.
 
-        :param num_classes: int
-        :return: dict[str, Callable]
+        :return: MetricsHandler
         """
-        metrics = generate_metrics_fn(self.config.metrics, num_classes)
-        return metrics
+        metric_handler = MetricsHandler(
+            self.config.metrics, self.dataset_provided_topo_infos
+        )
+        return metric_handler
 
     def lightning_module(self) -> pl.LightningModule:
         """

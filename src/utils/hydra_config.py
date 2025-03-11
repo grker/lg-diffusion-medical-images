@@ -130,8 +130,12 @@ class LossConfig:
     log_loss_parts: bool
 
 
+class Metric:
+    kwargs: dict
+
+
 class MetricsConfig:
-    metric_fns_config: dict[str, dict]
+    metric_fns_config: dict[str, Metric]
 
 
 class SchedulerConfig:
@@ -234,6 +238,8 @@ class LossGuidedDiffusionConfig(DiffusionConfig):
 class MetricsHandlerConfig:
     standard_metrics: MetricsConfig
     topo_metrics: MetricsConfig
+    guided_step_metrics: MetricsConfig | None
+    starting_step: int
 
 
 class LossGuidedMetricsHandlerConfig(MetricsHandlerConfig):
@@ -252,7 +258,7 @@ class SegmentationConfig:
     model: ModelConfig
     diffusion: DiffusionConfig
     trainer: TrainerConfig
-    metrics: MetricsConfig
+    metrics: MetricsHandlerConfig
     loss: LossConfig
     optimizer: OptimizerConfig
     train: bool

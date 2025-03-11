@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 import wandb
 from guidance.loss_guider import LossGuider
+from metrics import MetricsHandler, MetricsInput
 from utils.helper import unpack_batch
 from utils.hydra_config import (
     DiffusionConfig,
@@ -19,11 +20,6 @@ from utils.hydra_config import (
     OptimizerConfig,
 )
 from utils.mask_transformer import BaseMaskMapping
-from utils.metrics import (
-    compute_and_log_metrics,
-    generate_metrics_fn,
-)
-from utils.metrics_wrapper import DigitBettiNumberMetric
 from utils.visualize import (
     create_wandb_image,
     gif_over_timesteps,
@@ -46,7 +42,7 @@ class DDPM(pl.LightningModule):
     scheduler: DDPMScheduler
     model: nn.Module
     optimizer_config: OptimizerConfig
-    metrics: dict
+    metrics: MetricsHandler
     mask_transformer: BaseMaskMapping
     num_classes: int  # always includes the background
 
@@ -55,7 +51,7 @@ class DDPM(pl.LightningModule):
         model: nn.Module,
         diffusion_config: DiffusionConfig,
         optimizer_config: OptimizerConfig,
-        metrics: dict,
+        metrics: MetricsHandler,
         mask_transformer: BaseMaskMapping,
         loss: torch.nn.Module,
     ):
@@ -83,19 +79,13 @@ class DDPM(pl.LightningModule):
 
         self.model = model
         self.optimizer_config = optimizer_config
-        self.metrics = metrics
+        self.metric_handler = metrics
         self.repetitions = diffusion_config.repetitions
         self.threshold = diffusion_config.threshold
         self.prediction_type = diffusion_config.prediction_type
         self.mask_transformer = mask_transformer
         self.repetitions_test = diffusion_config.repetitions_test
         self.num_classes = mask_transformer.get_num_classes()
-
-        self.betti_digit_metric = DigitBettiNumberMetric(
-            connectivity=1,
-            num_labels=10,
-            include_background=False,
-        )
 
         self.loss_fn = loss
 
@@ -169,6 +159,8 @@ class DDPM(pl.LightningModule):
         elif self.prediction_type == "sample":
             loss = self.loss_fn(prediction, gt_train_masks)
 
+        print(f"loss from {batch_idx}: {loss}")
+
         self.log("train_loss", loss)
 
         return loss
@@ -182,7 +174,7 @@ class DDPM(pl.LightningModule):
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
 
-        images, gt_masks, gt_train_masks, labels = unpack_batch(batch, "test")
+        images, gt_masks, gt_train_masks, topo_inputs = unpack_batch(batch, "test")
         num_samples = images.shape[0]
         reps = self.repetitions_test if phase == "test" else self.repetitions
 
@@ -227,29 +219,9 @@ class DDPM(pl.LightningModule):
             seg_mask = self.mask_transformer.get_segmentation(logits)
             gt_masks = gt_masks.to(device=seg_mask.device)
 
-            # Detach before passing for metric computation
-            if phase == "test":
-                compute_and_log_metrics(
-                    self.metrics,
-                    seg_mask,
-                    gt_masks,
-                    phase,
-                    self.log,
-                    x_axis_name="repetition",
-                    x_axis_value=reps,
-                )
-            else:
-                compute_and_log_metrics(
-                    self.metrics, seg_mask, gt_masks, phase, self.log
-                )
-
-            scores = self.betti_digit_metric(seg_mask, labels)
-            self.log(
-                f"{phase}_{self.betti_digit_metric.logging_names[0]}", scores[0].mean()
-            )
-            self.log(
-                f"{phase}_{self.betti_digit_metric.logging_names[1]}", scores[1].mean()
-            )
+            # Metrics computation
+            metrics_input = MetricsInput(seg_mask, gt_masks, topo_inputs)
+            self.metric_handler.compute_metrics(metrics_input, phase, self.log)
 
             # Visualization
             index = random.randint(0, num_samples - 1)
@@ -392,18 +364,8 @@ class DDPM_DPS(DDPM):
         self.starting_step = diffusion_config.loss_guidance.starting_step
         self.gamma = diffusion_config.loss_guidance.gamma
 
-        metrics_fn_dict = generate_metrics_fn(
-            diffusion_config.loss_guidance.guidance_metrics,
-            self.num_classes,
-        )
-
         losses = [self.loss_guider.loss_name]
-
-        self.guidance_metrics = GuidanceMetric(
-            metrics_fn_dict,
-            losses,
-            self.starting_step,
-        )
+        self.metric_handler.add_losses(losses)
 
         self.visualize_gradients = diffusion_config.loss_guidance.visualize_gradients
 
@@ -419,7 +381,7 @@ class DDPM_DPS(DDPM):
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
 
-        images, gt_masks, gt_train_masks = unpack_batch(batch)
+        images, gt_masks, gt_train_masks, topo_inputs = unpack_batch(batch, "test")
         num_samples = images.shape[0]
         reps = self.repetitions_test if phase == "test" else self.repetitions
 
@@ -440,10 +402,7 @@ class DDPM_DPS(DDPM):
 
             # guided diffusion steps
             for t in tqdm(self.scheduler.timesteps[-self.starting_step : -1]):
-                # start_time = time.time()
                 noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
-                # end_time = time.time()
-                # print(f"{t}:guided step time: {end_time - start_time}")
 
                 self.guidance_metrics.update(
                     self.mask_transformer.get_segmentation(
@@ -488,8 +447,9 @@ class DDPM_DPS(DDPM):
         seg_mask = self.mask_transformer.get_segmentation(logits)
         gt_masks = gt_masks.to(device=seg_mask.device)
 
-        # Detach before passing for metric computation
-        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+        # Metrics computation
+        metrics_input = MetricsInput(seg_mask, gt_masks, topo_inputs)
+        self.metric_handler.compute_metrics(metrics_input, phase, self.log)
 
         # Visualization
         index = random.randint(0, num_samples - 1)
@@ -520,7 +480,6 @@ class DDPM_DPS(DDPM):
         gamma: float | None = None,
         return_gradients: bool = False,
     ):
-        # print(f"timestep: {t}")
         num_samples = images.shape[0]
         noisy_mask = noisy_mask.requires_grad_(True)
         model_output = self.model(
@@ -641,9 +600,6 @@ class DDPM_DPS_3Steps(DDPM_DPS):
             model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
         )
 
-        print(
-            f"diffusion_config loss_guidance in 3 steps: {diffusion_config.loss_guidance}"
-        )
         self.set_mode(diffusion_config.loss_guidance)
 
     def set_mode(self, loss_guidance_config: LossGuidance3StepConfig):
@@ -654,7 +610,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
 
-        images, gt_masks, gt_train_masks = unpack_batch(batch)
+        images, gt_masks, gt_train_masks, topo_inputs = unpack_batch(batch, "test")
         num_samples = images.shape[0]
         reps = self.repetitions_test if phase == "test" else self.repetitions
 
@@ -734,7 +690,9 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         seg_mask = self.mask_transformer.get_segmentation(logits)
         gt_masks = gt_masks.to(device=seg_mask.device)
 
-        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+        # Metrics computation
+        metrics_input = MetricsInput(seg_mask, gt_masks, topo_inputs)
+        self.metric_handler.compute_metrics(metrics_input, phase, self.log)
 
         # Visualization
         index = random.randint(0, num_samples - 1)
@@ -788,7 +746,6 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         last_step_unguided: bool,
     ):
         end_t = 1 if last_step_unguided else 0
-        print(f"current_t: {current_t}, end_t: {end_t}")
         for t in range(current_t, end_t - 1, -1):
             noisy_mask = self.only_guided_step(
                 noisy_mask, t, batch_idx, last_step_unguided
@@ -839,86 +796,3 @@ class DDPM_DPS_3Steps(DDPM_DPS):
             return new_noisy_mask, noisy_mask_grads
         else:
             return new_noisy_mask
-
-
-class GuidanceMetric:
-    def __init__(
-        self,
-        metrics_dict: dict,
-        losses: list[str],
-        timesteps: int,
-        initial_value: float = 0.0,
-    ):
-        self.metrics_dict = metrics_dict
-        self.timesteps = [i for i in range(timesteps)]
-
-        self.metric_values_per_timestep = {}
-        for name in self.metrics_dict.keys():
-            self.metric_values_per_timestep[name] = [initial_value] * timesteps
-
-        self.losses_per_timestep = {}
-
-        for name in losses:
-            self.losses_per_timestep[name] = [initial_value] * timesteps
-
-        self.total_samples = [0] * timesteps
-        self.total_batches = [0] * timesteps
-
-    def update(self, prediction: torch.Tensor, gt: torch.Tensor, timestep: int):
-        num_samples = prediction.shape[0]
-
-        for name, metric_fn in self.metrics_dict.items():
-            metric_value = metric_fn(prediction, gt)
-            self.metric_values_per_timestep[name][timestep] += torch.sum(
-                metric_value
-            ).item()
-
-        self.total_samples[timestep] += num_samples
-
-    def update_loss(self, losses: dict[str, float], timestep: int):
-        for name, loss in losses.items():
-            self.losses_per_timestep[name][timestep] += loss
-
-            self.total_batches[timestep] += 1
-
-    def compute(self):
-        metric_values = {}
-        for name in self.metrics_dict.keys():
-            metric_values[name] = [
-                (
-                    self.metric_values_per_timestep[name][timestep]
-                    / self.total_samples[timestep]
-                    if self.total_samples[timestep] > 0
-                    else 0
-                )
-                for timestep in self.timesteps
-            ]
-
-        for name in self.losses_per_timestep.keys():
-            metric_values[name] = [
-                (
-                    self.losses_per_timestep[name][timestep]
-                    / self.total_batches[timestep]
-                    if self.total_batches[timestep] > 0
-                    else 0
-                )
-                for timestep in self.timesteps
-            ]
-
-        return metric_values
-
-    def log_to_wandb(self):
-        computed_values = self.compute()
-        print(f"computed_values: {computed_values}")
-        for name in self.metrics_dict.keys():
-            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
-            table = wandb.Table(data=data, columns=["timestep", name])
-
-            wandb.log({f"{name}_metric_per_timestep": table})
-            print(f"logged {name}_metric_per_timestep")
-
-        for name in self.losses_per_timestep.keys():
-            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
-            table = wandb.Table(data=data, columns=["timestep", name])
-            wandb.log({f"{name}_loss_per_timestep": table})
-            print(f"logged {name}_loss_per_timestep")

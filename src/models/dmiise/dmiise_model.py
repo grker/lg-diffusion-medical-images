@@ -69,7 +69,7 @@ class DmiiseSegmentation(BaseSegmentation):
         model_args["model"] = model
         model_args["diffusion_config"] = self.config.diffusion
         model_args["optimizer_config"] = self.config.optimizer
-        model_args["metrics"] = self.create_metrics_fn(num_classes)
+        model_args["metrics"] = self.create_metric_handler()
         model_args["loss"] = self.create_loss()
 
         return model_args

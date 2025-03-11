@@ -21,7 +21,7 @@ class UnetSegmentation(BaseSegmentation):
         return {
             "mask_transformer": mask_transformer,
             "model": self.create_model(),
-            "metrics": self.create_metrics_fn(num_classes),
+            "metrics": self.create_metric_handler(),
             "loss": self.create_loss(),
         }
 
@@ -103,9 +103,6 @@ class UnetSegmentationModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         images, masks, training_mask = unpack_batch(batch)
         pred_masks = self.model(images)
-
-        print(f"pred_masks: {pred_masks.shape}")
-        print(f"masks: {masks.shape}")
 
         loss = self.loss_fn(pred_masks, training_mask)
         self.log("train_loss", loss)

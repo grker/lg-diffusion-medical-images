@@ -146,8 +146,6 @@ class BettiNumberMetric:
 
             self.logging_names = logging_names_0 + logging_names_1
 
-            print(f"logging_names: {self.logging_names}")
-
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
         if self.class_wise:
             return self.betti_number_0_1_class_wise(y_pred, y)
