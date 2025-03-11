@@ -28,6 +28,8 @@ class ACDCDataset(Dataset):
 
     mask_transformer: BaseMaskMapping
 
+    topo_infos: list[str] = []
+
     def __init__(self, config: DatasetConfig):
         print(f"data path: {config.data_path}")
 
@@ -163,7 +165,7 @@ class ACDCDataset(Dataset):
 
     def __getitem__(self, idx):
         # return self.data[idx], self.gt[idx]
-        return self.data[idx], self.gt[idx], self.gt_train[idx]
+        return self.data[idx], self.gt[idx], self.gt_train[idx], {}
 
     def get_image_size(self):
         return self.data.shape[1:]

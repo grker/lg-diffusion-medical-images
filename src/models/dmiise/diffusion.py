@@ -404,7 +404,7 @@ class DDPM_DPS(DDPM):
             for t in tqdm(self.scheduler.timesteps[-self.starting_step : -1]):
                 noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
 
-                self.guidance_metrics.update(
+                self.metric_handler.update(
                     self.mask_transformer.get_segmentation(
                         self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
                     ),
@@ -435,7 +435,7 @@ class DDPM_DPS(DDPM):
             )
 
             ensemble_mask.append(noisy_mask.detach().cpu())
-            self.guidance_metrics.log_to_wandb()
+            self.metric_handler.log_guidance_metrics()
 
         # Prediction Segmentation mask
         logits = self.mask_transformer.get_logits(
@@ -494,7 +494,7 @@ class DDPM_DPS(DDPM):
         )
         print(f"loss at timestep {t}: {loss}")
 
-        self.guidance_metrics.update_loss(
+        self.metric_handler.update_loss(
             {self.loss_guider.loss_name: loss.item()},
             t,
         )
@@ -529,12 +529,6 @@ class DDPM_DPS(DDPM):
                     torch.clamp(model_output[random_idx], -1, 1),
                     commit=(t == 1),
                 )
-
-        # from utils.visualize import visualize_component_map
-
-        # visualize_component_map(
-        #     noisy_mask_grads, f"noisy_mask_grads_timestep_{t}", batch_idx, merged=False
-        # )
 
         if return_gradients:
             return new_noisy_mask, noisy_mask_grads
@@ -671,14 +665,14 @@ class DDPM_DPS_3Steps(DDPM_DPS):
                 0,
                 batch_idx,
             )
-            self.guidance_metrics.update_loss(
+            self.metric_handler.update_loss(
                 {self.loss_guider.loss_name: loss.item()},
                 0,
             )
             print(f"final loss: {loss}")
 
             ensemble_mask.append(noisy_mask.detach().cpu())
-            self.guidance_metrics.log_to_wandb()
+            self.metric_handler.log_guidance_metrics()
 
         # Prediction Segmentation mask
         logits = self.mask_transformer.get_logits(
@@ -726,7 +720,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         for t in range(current_t, end_t - 1, -1):
             noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
 
-            self.guidance_metrics.update(
+            self.metric_handler.update(
                 self.mask_transformer.get_segmentation(
                     self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
                 ),
@@ -751,7 +745,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
                 noisy_mask, t, batch_idx, last_step_unguided
             )
 
-            self.guidance_metrics.update(
+            self.metric_handler.update(
                 self.mask_transformer.get_segmentation(
                     self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
                 ),
@@ -779,7 +773,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         )
         print(f"loss at timestep {t}: {loss}")
 
-        self.guidance_metrics.update_loss(
+        self.metric_handler.update_loss(
             {self.loss_guider.loss_name: loss.item()},
             t,
         )
