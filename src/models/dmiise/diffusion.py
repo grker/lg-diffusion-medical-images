@@ -159,8 +159,6 @@ class DDPM(pl.LightningModule):
         elif self.prediction_type == "sample":
             loss = self.loss_fn(prediction, gt_train_masks)
 
-        print(f"loss from {batch_idx}: {loss}")
-
         self.log("train_loss", loss)
 
         return loss

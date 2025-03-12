@@ -38,8 +38,18 @@ class DigitBettiNumberMetric(BettiNumberMetric, TopologicalMetric):
 
         betti_0_per_sample, betti_1_per_sample = self.get_betti_numbers(labels)
 
+        print(f"labels: {labels[:10]}")
+        print(f"betti_0_per_sample: {betti_0_per_sample[:10]}")
+        print(f"betti_1_per_sample: {betti_1_per_sample[:10]}")
+
         for idx in range(y_pred.shape[0]):
             b0, b1 = self.betti_number_per_pred(y_pred[idx])
+
+            if idx < 10:
+                print(f"b0: {b0}, b1: {b1}")
+                print(f"betti_0_per_sample[idx]: {betti_0_per_sample[idx]}")
+                print(f"betti_1_per_sample[idx]: {betti_1_per_sample[idx]}")
+
             scores[0, idx] = abs(b0 - betti_0_per_sample[idx])
             scores[1, idx] = abs(b1 - betti_1_per_sample[idx])
 

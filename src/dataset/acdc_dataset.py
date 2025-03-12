@@ -176,6 +176,9 @@ class ACDCDataset(Dataset):
     def get_image_width(self):
         return self.data.shape[3]
 
+    def get_topo_infos(self):
+        return self.topo_infos
+
 
 class ACDCDatasetGTAutoEncoder(ACDCDataset):
     def __init__(

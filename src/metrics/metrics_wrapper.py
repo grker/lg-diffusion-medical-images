@@ -186,6 +186,7 @@ class BettiNumberMetric:
             err_0 = 0.0
             err_1 = 0.0
             labels = self.extract_labels(y_pred_np[idx], y_np[idx])
+            print(f"used labels in class wise: {labels}")
             for labli in labels:
                 b0, b1 = self.betti_number_per_label(y_pred_np[idx], y_np[idx], labli)
                 err_0 += b0
@@ -222,6 +223,9 @@ class BettiNumberMetric:
             b0_pred, b1_pred = 0, 0
         else:
             b0_pred, b1_pred = self.betti_numbers_image(label_pred)
+
+        print(f"b0_gt: {b0_gt}, b1_gt: {b1_gt}")
+        print(f"b0_pred: {b0_pred}, b1_pred: {b1_pred}")
 
         return abs(b0_gt - b0_pred), abs(b1_gt - b1_pred)
 
