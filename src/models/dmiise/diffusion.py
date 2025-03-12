@@ -402,13 +402,15 @@ class DDPM_DPS(DDPM):
             for t in tqdm(self.scheduler.timesteps[-self.starting_step : -1]):
                 noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
 
-                self.metric_handler.update(
+                inputs = MetricsInput(
                     self.mask_transformer.get_segmentation(
                         self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
                     ),
                     gt_masks,
-                    t,
+                    topo_inputs,
                 )
+
+                self.metric_handler.update_guidance_metrics(inputs, t)
 
             # deactivate the gradient for the model
             for name, param in self.model.named_parameters():
@@ -418,13 +420,15 @@ class DDPM_DPS(DDPM):
             # last step is always unguided
             noisy_mask = noisy_mask.requires_grad_(False)
             noisy_mask = self.unguided_step(noisy_mask, images, 0)
-            self.guidance_metrics.update(
+            inputs = MetricsInput(
                 self.mask_transformer.get_segmentation(
                     self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
                 ),
                 gt_masks,
-                0,
+                topo_inputs,
             )
+
+            self.metric_handler.update_guidance_metrics(inputs, 0)
 
             self.loss_guider.guidance_loss(
                 noisy_mask,
@@ -624,6 +628,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
             if self.mode == "only_guided":
                 noisy_mask = self.only_guidance(
                     noisy_mask,
+                    topo_inputs,
                     t - 1,
                     batch_idx,
                     gt_masks,
@@ -633,6 +638,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
                 noisy_mask = self.dps_guidance(
                     noisy_mask,
                     images,
+                    topo_inputs,
                     t - 1,
                     batch_idx,
                     gt_masks,
@@ -649,13 +655,15 @@ class DDPM_DPS_3Steps(DDPM_DPS):
             if self.last_step_unguided:
                 noisy_mask = noisy_mask.requires_grad_(False)
                 noisy_mask = self.unguided_step(noisy_mask, images, 0)
-                self.guidance_metrics.update(
+                inputs = MetricsInput(
                     self.mask_transformer.get_segmentation(
                         self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
                     ),
                     gt_masks,
-                    0,
+                    topo_inputs,
                 )
+
+                self.metric_handler.update_guidance_metrics(inputs, 0)
 
             # final loss:
             loss = self.loss_guider.guidance_loss(
@@ -709,6 +717,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         self,
         noisy_mask: torch.Tensor,
         images: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
         current_t: int,
         batch_idx: int,
         gt_masks: torch.Tensor,
@@ -718,13 +727,15 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         for t in range(current_t, end_t - 1, -1):
             noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
 
-            self.metric_handler.update(
+            inputs = MetricsInput(
                 self.mask_transformer.get_segmentation(
                     self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
                 ),
                 gt_masks,
-                t,
+                topo_inputs,
             )
+
+            self.metric_handler.update_guidance_metrics(inputs, t)
 
         return noisy_mask
 
@@ -732,6 +743,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
     def only_guidance(
         self,
         noisy_mask: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
         current_t: int,
         batch_idx: int,
         gt_masks: torch.Tensor,
@@ -743,13 +755,15 @@ class DDPM_DPS_3Steps(DDPM_DPS):
                 noisy_mask, t, batch_idx, last_step_unguided
             )
 
-            self.metric_handler.update(
+            inputs = MetricsInput(
                 self.mask_transformer.get_segmentation(
                     self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
                 ),
                 gt_masks,
-                t,
+                topo_inputs,
             )
+
+            self.metric_handler.update_guidance_metrics(inputs, t)
 
         return noisy_mask
 

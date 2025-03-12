@@ -1,6 +1,6 @@
 defaults:
   - loss_guidance: loss_guidance_base
-  - metrics: class_wise_dice_metric
+  - metrics: metrics_handler_binary_guidance
 
 wandb_username: difseg
 wandb_project: difseg

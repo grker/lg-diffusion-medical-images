@@ -1,3 +1,5 @@
+import copy
+
 import monai.metrics
 import torch
 
@@ -11,6 +13,7 @@ from utils.hydra_config import (
 
 def generate_metrics_fn(config: MetricsConfig):
     metric_fns = {}
+    guided_fns = {}
 
     if config is None or config.metric_fns_config is None:
         return metric_fns
@@ -31,16 +34,20 @@ def generate_metrics_fn(config: MetricsConfig):
             else:
                 raise ValueError(f"Unknown score function {name}")
 
+            if dictionary.guidance:
+                guided_fns[name] = copy.deepcopy(metric_fns[name])
+
         except ValueError as e:
             print(f"Metric {name} cannot be initialized. Received Error: {str(e)}")
 
-    return metric_fns
+    return metric_fns, guided_fns
 
 
 def generate_topo_metrics_fn(
     config: MetricsConfig, dataset_provided_topo_infos: list[str]
 ):
     metric_fns = {}
+    guided_fns = {}
 
     if config is None or config.metric_fns_config is None:
         return metric_fns
@@ -65,10 +72,13 @@ def generate_topo_metrics_fn(
             else:
                 raise ValueError(f"Unknown topological metric function {name}")
 
+            if dictionary.guidance:
+                guided_fns[name] = copy.deepcopy(metric_fns[name])
+
         except ValueError as e:
             print(f"Metric {name} cannot be initialized. Received Error: {str(e)}")
 
-    return metric_fns
+    return metric_fns, guided_fns
 
 
 def clean_nan_scores_and_avg(scores: torch.Tensor):
@@ -92,35 +102,176 @@ class MetricsInput:
         self.topo_inputs = topo_inputs
 
 
+class GuidanceMetric:
+    metrics_dict: dict
+    losses: list[str]
+    timesteps: list[int]
+    metric_values_per_timestep: dict[str, list[float]]
+    losses_per_timestep: dict[str, list[float]]
+    total_samples: list[int]
+    total_batches: list[int]
+
+    def __init__(
+        self,
+        metrics_dict: dict,
+        topo_metrics_dict: dict,
+        losses: list[str] | None,
+        timesteps: int,
+        initial_value: float = 0.0,
+    ):
+        self.metrics_dict = metrics_dict
+        self.topo_metrics_dict = topo_metrics_dict
+        self.timesteps = [i for i in range(timesteps)]
+
+        self.metric_values_per_timestep = {}
+        for name in self.metrics_dict.keys():
+            self.metric_values_per_timestep[name] = [initial_value] * timesteps
+
+        self.topo_metric_values_per_timestep = {}
+        for name in self.topo_metrics_dict.keys():
+            self.topo_metric_values_per_timestep[name] = [initial_value] * timesteps
+
+        self.losses_per_timestep = {}
+
+        if losses is not None:
+            for name in losses:
+                self.losses_per_timestep[name] = [initial_value] * timesteps
+
+        self.total_samples = [0] * timesteps
+        self.total_batches = [0] * timesteps
+
+    def add_losses(self, losses: list[str]):
+        for name in losses:
+            self.losses_per_timestep[name] = [0.0] * len(self.timesteps)
+
+    def update(self, inputs: MetricsInput, timestep: int):
+        print(f"update metrics: {self.topo_metric_values_per_timestep}")
+        prediction = inputs.seg_mask
+        gt = inputs.gt
+
+        num_samples = prediction.shape[0]
+
+        for name, metric_fn in self.metrics_dict.items():
+            try:
+                metric_value = metric_fn(prediction, gt)
+                self.metric_values_per_timestep[name][timestep] += torch.sum(
+                    metric_value
+                ).item()
+            except Exception as e:
+                print(f"{name} cannot be computed. Received Error: {str(e)}")
+
+        for name, metric_fn in self.topo_metrics_dict.items():
+            try:
+                needed_inputs = metric_fn.get_needed_inputs()
+
+                kwargs = {}
+
+                for input_name in needed_inputs:
+                    kwargs[input_name] = inputs.topo_inputs[input_name]
+
+                    metric_value = metric_fn(prediction, **kwargs)
+                    print(f"metric value computed: {metric_value}")
+                    self.topo_metric_values_per_timestep[name][timestep] += torch.sum(
+                        metric_value
+                    ).item()
+            except Exception as e:
+                print(f"{name} cannot be computed. Received Error: {str(e)}")
+
+        self.total_samples[timestep] += num_samples
+
+    def update_loss(self, losses: dict[str, float], timestep: int):
+        for name, loss in losses.items():
+            self.losses_per_timestep[name][timestep] += loss
+
+            self.total_batches[timestep] += 1
+
+        print(f"losses per timestep: {self.losses_per_timestep}")
+
+    def compute(self):
+        metric_values = {}
+        for name in self.metrics_dict.keys():
+            metric_values[name] = [
+                (
+                    self.metric_values_per_timestep[name][timestep]
+                    / self.total_samples[timestep]
+                    if self.total_samples[timestep] > 0
+                    else 0
+                )
+                for timestep in self.timesteps
+            ]
+
+        for name in self.losses_per_timestep.keys():
+            metric_values[name] = [
+                (
+                    self.losses_per_timestep[name][timestep]
+                    / self.total_batches[timestep]
+                    if self.total_batches[timestep] > 0
+                    else 0
+                )
+                for timestep in self.timesteps
+            ]
+
+        return metric_values
+
+    def log_to_wandb(self):
+        computed_values = self.compute()
+        for name in self.metrics_dict.keys():
+            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
+            table = wandb.Table(data=data, columns=["timestep", name])
+            wandb.log({f"{name}_metric_per_timestep": table})
+
+        for name in self.topo_metrics_dict.keys():
+            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
+            table = wandb.Table(data=data, columns=["timestep", name])
+            wandb.log({f"{name}_metric_per_timestep": table})
+
+        for name in self.losses_per_timestep.keys():
+            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
+            table = wandb.Table(data=data, columns=["timestep", name])
+            wandb.log({f"{name}_loss_per_timestep": table})
+
+
 class MetricsHandler:
     standard_metrics: dict
     topo_metrics: dict
+    guidance_metrics: GuidanceMetric | None = None
 
     def __init__(
         self, config: MetricsHandlerConfig, dataset_provided_topo_infos: list[str]
     ):
-        self.standard_metrics = generate_metrics_fn(config.standard_metrics)
-        self.topo_metrics = generate_topo_metrics_fn(
+        self.standard_metrics, self.guided_metrics = generate_metrics_fn(
+            config.standard_metrics
+        )
+        self.topo_metrics, self.guided_topo_metrics = generate_topo_metrics_fn(
             config.topo_metrics, dataset_provided_topo_infos
         )
 
-        self.guided_step_metrics = generate_metrics_fn(config.guided_step_metrics)
-        self.guidance_metrics = GuidanceMetric(
-            self.guided_step_metrics,
-            None,
-            config.starting_step,
-        )
+        if (
+            len(self.guided_metrics.keys()) > 0
+            or len(self.guided_topo_metrics.keys()) > 0
+        ):
+            self.guidance_metrics = GuidanceMetric(
+                self.guided_metrics,
+                self.guided_topo_metrics,
+                None,
+                config.starting_step,
+            )
+            print("Guidance metrics initialized")
 
-    def update_guidance_metrics(
-        self, prediction: torch.Tensor, gt: torch.Tensor, timestep: int
-    ):
-        self.guidance_metrics.update(prediction, gt, timestep)
+    def update_guidance_metrics(self, inputs: MetricsInput, timestep: int):
+        if self.guidance_metrics is not None:
+            self.guidance_metrics.update(inputs, timestep)
+
+    def update_loss(self, losses: dict[str, float], timestep: int):
+        if self.guidance_metrics is not None:
+            self.guidance_metrics.update_loss(losses, timestep)
 
     def log_guidance_metrics(self):
-        self.guidance_metrics.log_to_wandb()
+        if self.guidance_metrics is not None:
+            self.guidance_metrics.log_to_wandb()
 
     def add_losses(self, losses: list[str]):
-        if self.guided_step_metrics is not None:
+        if self.guidance_metrics is not None:
             self.guidance_metrics.add_losses(losses)
 
     def compute_metrics(self, inputs: MetricsInput, phase: str, logger):
@@ -199,96 +350,3 @@ class MetricsHandler:
 
             except Exception as e:
                 print(f"{metric_name} cannot be computed. Received Error: {str(e)}")
-
-
-class GuidanceMetric:
-    metrics_dict: dict
-    losses: list[str]
-    timesteps: list[int]
-    metric_values_per_timestep: dict[str, list[float]]
-    losses_per_timestep: dict[str, list[float]]
-    total_samples: list[int]
-    total_batches: list[int]
-
-    def __init__(
-        self,
-        metrics_dict: dict,
-        losses: list[str] | None,
-        timesteps: int,
-        initial_value: float = 0.0,
-    ):
-        self.metrics_dict = metrics_dict
-        self.timesteps = [i for i in range(timesteps)]
-
-        self.metric_values_per_timestep = {}
-        for name in self.metrics_dict.keys():
-            self.metric_values_per_timestep[name] = [initial_value] * timesteps
-
-        self.losses_per_timestep = {}
-
-        if losses is not None:
-            for name in losses:
-                self.losses_per_timestep[name] = [initial_value] * timesteps
-
-        self.total_samples = [0] * timesteps
-        self.total_batches = [0] * timesteps
-
-    def add_losses(self, losses: list[str]):
-        for name in losses:
-            self.losses_per_timestep[name] = [0.0] * len(self.timesteps)
-
-    def update(self, prediction: torch.Tensor, gt: torch.Tensor, timestep: int):
-        num_samples = prediction.shape[0]
-
-        for name, metric_fn in self.metrics_dict.items():
-            metric_value = metric_fn(prediction, gt)
-            self.metric_values_per_timestep[name][timestep] += torch.sum(
-                metric_value
-            ).item()
-
-        self.total_samples[timestep] += num_samples
-
-    def update_loss(self, losses: dict[str, float], timestep: int):
-        for name, loss in losses.items():
-            self.losses_per_timestep[name][timestep] += loss
-
-            self.total_batches[timestep] += 1
-
-    def compute(self):
-        metric_values = {}
-        for name in self.metrics_dict.keys():
-            metric_values[name] = [
-                (
-                    self.metric_values_per_timestep[name][timestep]
-                    / self.total_samples[timestep]
-                    if self.total_samples[timestep] > 0
-                    else 0
-                )
-                for timestep in self.timesteps
-            ]
-
-        for name in self.losses_per_timestep.keys():
-            metric_values[name] = [
-                (
-                    self.losses_per_timestep[name][timestep]
-                    / self.total_batches[timestep]
-                    if self.total_batches[timestep] > 0
-                    else 0
-                )
-                for timestep in self.timesteps
-            ]
-
-        return metric_values
-
-    def log_to_wandb(self):
-        computed_values = self.compute()
-        for name in self.metrics_dict.keys():
-            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
-            table = wandb.Table(data=data, columns=["timestep", name])
-
-            wandb.log({f"{name}_metric_per_timestep": table})
-
-        for name in self.losses_per_timestep.keys():
-            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
-            table = wandb.Table(data=data, columns=["timestep", name])
-            wandb.log({f"{name}_loss_per_timestep": table})

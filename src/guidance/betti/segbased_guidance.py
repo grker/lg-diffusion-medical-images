@@ -85,7 +85,7 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
         binary_component_map = torch.zeros_like(prediction)
 
         for sample_idx in range(prediction.shape[0]):
-            for class_idx in range(self.num_classes):
+            for class_idx in range(prediction.shape[1]):
                 component_map = self.component_map(
                     prediction[sample_idx, class_idx], self.topo_features[class_idx][0]
                 )
@@ -108,7 +108,18 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
 
     def guidance_loss(self, model_output: torch.Tensor, t: int, batch_idx: int):
         x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
+        print(f"max x_softmax: {torch.max(x_softmax)}")
+        print(f"min x_softmax: {torch.min(x_softmax)}")
+        print(
+            f"histogram x_softmax: {torch.histc(x_softmax.flatten(), bins=10, min=0, max=1)}"
+        )
         pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
+
+        print(f"max pseudo_gt: {torch.max(pseudo_gt)}")
+        print(f"min pseudo_gt: {torch.min(pseudo_gt)}")
+        print(
+            f"histogram pseudo_gt: {torch.histc(pseudo_gt.flatten(), bins=10, min=0, max=1)}"
+        )
 
         loss = self.loss_fn(model_output, pseudo_gt)
         print(f"Loss: {loss}")
@@ -130,7 +141,7 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
         binary_component_map = torch.zeros_like(prediction)
 
         for sample_idx in range(prediction.shape[0]):
-            for class_idx in range(self.num_classes):
+            for class_idx in range(prediction.shape[1]):
                 holes_map, holes = self.holes_map(
                     prediction[sample_idx, class_idx],
                 )

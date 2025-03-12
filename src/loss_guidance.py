@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 
@@ -33,7 +34,10 @@ def main(config: LossGuidanceInferenceConfig):
     print(f"log_dir: {log_dir}")
     os.makedirs(log_dir, exist_ok=True)
 
-    wandb.config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+    wandb.config = copy.deepcopy(
+        OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+    )
+    print(f"config: {config}")
 
     run = wandb.init(
         project="difseg",
@@ -70,6 +74,7 @@ def main(config: LossGuidanceInferenceConfig):
     # add the loss guidance config to the diffusion config
     print(f"new config: {config}")
     old_config.diffusion.loss_guidance = config.loss_guidance
+    old_config.loss_guidance = config.loss_guidance
     old_config.dataloader.val_batch_size = config.test_batch_size
 
     if torch.cuda.is_available():
