@@ -146,7 +146,7 @@ class MNISTLabelDataset(Dataset):
     gt_train: torch.Tensor
     betti_0: torch.Tensor  # contains the number of components for each image
     betti_1: torch.Tensor  # contains the number of cycles for each image
-    topo_infos: list[str] = ["betti_0, betti_1"]
+    topo_infos: list[str] = ["betti_0", "betti_1"]
     betti_numbers_0 = torch.tensor([1] * 10)  # every digit consists of one component
     betti_numbers_1 = torch.tensor(
         [1, 0, 0, 0, 1, 0, 1, 0, 2, 1]

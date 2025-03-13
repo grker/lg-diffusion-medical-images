@@ -21,6 +21,6 @@ topo_metrics:
         connectivity: 2
         num_labels: 10
         include_background: False
-      guidance: True # Tracked in the guidance
+      guidance: False # Tracked in the guidance
 guided_step_metrics:
 starting_step: ${loss_guidance.starting_step}

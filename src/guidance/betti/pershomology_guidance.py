@@ -119,7 +119,7 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
         pseudo_gt = self.pseudo_gt(x_softmax, t, batch_idx)
         loss = self.loss_fn(x_softmax, pseudo_gt)
 
-        return loss, pseudo_gt
+        return loss
 
 
 class Birth_Death_Guider(PersHomologyBettiGuidance):

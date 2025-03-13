@@ -24,7 +24,6 @@ class SegBasedBettiGuidance(LossGuiderBetti):
         returns:
             torch.Tensor, shape (1, height, width)
         """
-        print(f"prediction type: {prediction.dtype}")
         width, height = prediction.shape[0], prediction.shape[1]
         prediction = prediction.unsqueeze(0)
         component_map = (
@@ -34,14 +33,11 @@ class SegBasedBettiGuidance(LossGuiderBetti):
             * prediction
         )
 
-        print(f"component_map type: {component_map.dtype}")
-
         for i in range(2 * max(width, height)):
             component_map = (
                 torch.max_pool2d(component_map, kernel_size=3, stride=1, padding=1)
                 * prediction
             )
-            print(f"component_map type: {component_map.dtype}")
 
         filtered_component_map = component_map
 
@@ -152,7 +148,7 @@ class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
     def pseudo_gt(
         self, x_softmax: torch.Tensor, t: int, batch_idx: int, betti_0: torch.Tensor
     ):
-        prediction = x_softmax > 0.5
+        prediction = (x_softmax > 0.5).to(torch.float32)
 
         binary_component_map = torch.zeros_like(prediction)
 
@@ -185,7 +181,7 @@ class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
 
         loss = self.loss_fn(x_softmax, pseudo_gt)
         print(f"Loss: {loss}")
-        return loss, pseudo_gt
+        return loss
 
 
 class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
@@ -345,4 +341,4 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
         pseudo_gt = self.pseudo_gt(x_softmax, t, batch_idx)
 
         loss = self.loss_fn(model_output, pseudo_gt)
-        return loss, pseudo_gt
+        return loss

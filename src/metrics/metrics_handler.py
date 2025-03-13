@@ -49,6 +49,8 @@ def generate_topo_metrics_fn(
     metric_fns = {}
     guided_fns = {}
 
+    print(f"dataset_provided_topo_infos: {dataset_provided_topo_infos}")
+
     if config is None or config.metric_fns_config is None:
         return metric_fns, guided_fns
 

@@ -10,6 +10,7 @@ class TopologicalMetric:
 
 class DigitBettiNumberMetric(BettiNumberMetric, TopologicalMetric):
     needed_inputs = ["betti_0", "betti_1"]
+    logging_names = ["digit_betti_number_0", "digit_betti_number_1"]
 
     def __init__(
         self,
@@ -20,11 +21,6 @@ class DigitBettiNumberMetric(BettiNumberMetric, TopologicalMetric):
         self.connectivity = connectivity
         self.num_labels = num_labels
         self.include_background = include_background
-
-        self.logging_names = [
-            "digit_betti_number_labels_0",
-            "digit_betti_number_labels_1",
-        ]
 
     def get_needed_inputs(self):
         return self.needed_inputs
@@ -42,6 +38,10 @@ class DigitBettiNumberMetric(BettiNumberMetric, TopologicalMetric):
 
             scores[0, idx] = abs(b0 - betti_0[idx])
             scores[1, idx] = abs(b1 - betti_1[idx])
+
+        print(f"scores: {scores[:15]}")
+        print(f"betti_0: {betti_0[:15]}")
+        print(f"betti_1: {betti_1[:15]}")
 
         return scores
 

@@ -672,6 +672,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
                 noisy_mask,
                 0,
                 batch_idx,
+                **topo_inputs,
             )
             self.metric_handler.update_loss(
                 {self.loss_guider.loss_name: loss.item()},
@@ -754,7 +755,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
         end_t = 1 if last_step_unguided else 0
         for t in range(current_t, end_t - 1, -1):
             noisy_mask = self.only_guided_step(
-                noisy_mask, t, batch_idx, last_step_unguided
+                noisy_mask, topo_inputs, t, batch_idx, last_step_unguided
             )
 
             inputs = MetricsInput(
@@ -773,6 +774,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
     def only_guided_step(
         self,
         noisy_mask: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
         t: int,
         batch_idx: int,
         gamma: float | None = None,
@@ -784,6 +786,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
             noisy_mask,
             t,
             batch_idx,
+            **topo_inputs,
         )
         print(f"loss at timestep {t}: {loss}")
 

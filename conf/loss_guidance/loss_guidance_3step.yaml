@@ -1,6 +1,5 @@
 defaults:
   - guider: seg_comp
-  - guidance_metrics: betti_metric
   - _self_
 
 gamma: 0.1

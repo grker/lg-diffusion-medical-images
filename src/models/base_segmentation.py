@@ -121,6 +121,7 @@ class BaseSegmentation:
         :return: tuple[Dataset, DataLoader]
         """
         dataset = self.create_dataset(self.config.dataset)
+        print(f"dataset.get_topo_infos(): {dataset.get_topo_infos()}")
         self.set_dataset_provided_topo_infos(dataset.get_topo_infos())
         return dataset, self.create_dataloaders(self.config.dataloader, dataset)
 
