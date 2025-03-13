@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 import wandb
-from guidance.loss_guider import LossGuider
+from guidance import LossGuider
 from metrics import MetricsHandler, MetricsInput
 from utils.helper import unpack_batch
 from utils.hydra_config import (
@@ -477,6 +477,7 @@ class DDPM_DPS(DDPM):
         self,
         noisy_mask: torch.Tensor,
         images: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
         t: int,
         batch_idx: int,
         gamma: float | None = None,
@@ -493,6 +494,7 @@ class DDPM_DPS(DDPM):
             model_output,
             t,
             batch_idx,
+            **topo_inputs,
         )
         print(f"loss at timestep {t}: {loss}")
 
@@ -725,7 +727,7 @@ class DDPM_DPS_3Steps(DDPM_DPS):
     ):
         end_t = 1 if last_step_unguided else 0
         for t in range(current_t, end_t - 1, -1):
-            noisy_mask = self.guided_step(noisy_mask, images, t, batch_idx)
+            noisy_mask = self.guided_step(noisy_mask, images, topo_inputs, t, batch_idx)
 
             inputs = MetricsInput(
                 self.mask_transformer.get_segmentation(

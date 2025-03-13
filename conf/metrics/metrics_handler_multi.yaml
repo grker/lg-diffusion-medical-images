@@ -1,0 +1,18 @@
+standard_metrics:
+  metric_fns_config:
+    ClassWiseDiceMetric:
+      kwargs:
+        include_background: False
+        reduction: mean
+        num_classes: 4
+        ignore_empty: True
+      guidance: False
+    BettiNumberMetric:
+      kwargs:
+        connectivity: 2
+        include_background: False
+        num_classes: 4
+        class_wise: True
+      guidance: False
+topo_metrics: null
+starting_step: 0

@@ -144,18 +144,25 @@ class MNISTLabelDataset(Dataset):
     images: torch.Tensor
     gt: torch.Tensor
     gt_train: torch.Tensor
-    labels: torch.Tensor
-    topo_infos: list[str] = ["labels"]
+    betti_0: torch.Tensor  # contains the number of components for each image
+    betti_1: torch.Tensor  # contains the number of cycles for each image
+    topo_infos: list[str] = ["betti_0, betti_1"]
+    betti_numbers_0 = torch.tensor([1] * 10)  # every digit consists of one component
+    betti_numbers_1 = torch.tensor(
+        [1, 0, 0, 0, 1, 0, 1, 0, 2, 1]
+    )  # 0,4,6,9 have one cycle, 8 has two cycles
 
     def __init__(self, config: DatasetConfig):
         images = torch.from_numpy(np.load(os.path.join(config.data_path, "images.npy")))
         masks = torch.from_numpy(np.load(os.path.join(config.data_path, "masks.npy")))
-        self.labels = (
+        labels = (
             torch.from_numpy(np.load(os.path.join(config.data_path, "labels.npy")))
             .squeeze(1)
             .to(torch.int64)
         )
-        self.labels = torch.where(self.labels > 9, -1, self.labels)
+        labels = torch.where(labels > 9, -1, labels)
+
+        self.betti_0, self.betti_1 = self.get_betti_numbers_from_labels(labels)
 
         self.mask_transformer = generate_mask_mapping(config.mask_transformer)
 
@@ -194,6 +201,23 @@ class MNISTLabelDataset(Dataset):
 
         return data.type(torch.float32).unsqueeze(1)
 
+    def get_betti_numbers_from_labels(self, labels):
+        """
+        This function returns the betti numbers for each sample in the dataset. This is achieved by summing the betti numbers of the labels/digits.
+        params:
+            labels: torch.Tensor, shape (batch_size, num_labels)
+        returns:
+            betti_0_per_label: torch.Tensor, shape (batch_size,)
+            betti_1_per_label: torch.Tensor, shape (batch_size,)
+        """
+        betti_numbers_0 = self.betti_numbers_0.to(labels.device)
+        betti_numbers_1 = self.betti_numbers_1.to(labels.device)
+
+        betti_0_per_sample = (betti_numbers_0[labels] * (labels >= 0)).sum(dim=1)
+        betti_1_per_sample = (betti_numbers_1[labels] * (labels >= 0)).sum(dim=1)
+
+        return betti_0_per_sample, betti_1_per_sample
+
     def __len__(self):
         return self.images.shape[0]
 
@@ -202,7 +226,7 @@ class MNISTLabelDataset(Dataset):
             self.images[idx],
             self.gt[idx],
             self.gt_train[idx],
-            {"labels": self.labels[idx]},
+            {"betti_0": self.betti_0[idx], "betti_1": self.betti_1[idx]},
         )
 
     def get_image_size(self):

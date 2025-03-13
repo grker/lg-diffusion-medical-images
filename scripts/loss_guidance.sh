@@ -69,5 +69,5 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 
-python src/loss_guidance.py run_id=2piyzfrk loss_guidance=loss_guidance_3step loss_guidance.starting_step=5 loss_guidance.gamma=100 test_batch_size=32 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance
+python src/loss_guidance.py loss_guidance=loss_guidance_3step loss_guidance.guider.name=LossGuiderSegmentationComponents loss_guidance.starting_step=5 loss_guidance.gamma=100 test_batch_size=32 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_multi
 # python src/test.py

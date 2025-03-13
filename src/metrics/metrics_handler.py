@@ -50,7 +50,7 @@ def generate_topo_metrics_fn(
     guided_fns = {}
 
     if config is None or config.metric_fns_config is None:
-        return metric_fns
+        return metric_fns, guided_fns
 
     for name, dictionary in config.metric_fns_config.items():
         try:
@@ -197,6 +197,17 @@ class GuidanceMetric:
                     if self.total_samples[timestep] > 0
                     else 0
                 )
+                for timestep in self.timesteps
+            ]
+
+        for name in self.topo_metric_values_per_timestep.keys():
+            metric_values[name] = [
+                (
+                    self.topo_metric_values_per_timestep[name][timestep]
+                    / self.total_samples[timestep]
+                )
+                if self.total_samples[timestep] > 0
+                else 0
                 for timestep in self.timesteps
             ]
 
