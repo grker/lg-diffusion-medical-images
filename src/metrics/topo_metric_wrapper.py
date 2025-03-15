@@ -36,12 +36,15 @@ class DigitBettiNumberMetric(BettiNumberMetric, TopologicalMetric):
         for idx in range(y_pred.shape[0]):
             b0, b1 = self.betti_number_per_pred(y_pred[idx])
 
+            # print(f"b0: {b0}, betti_0[idx]: {betti_0[idx]}")
+            # print(f"b1: {b1}, betti_1[idx]: {betti_1[idx]}")
+
             scores[0, idx] = abs(b0 - betti_0[idx])
             scores[1, idx] = abs(b1 - betti_1[idx])
 
-        print(f"scores: {scores[:15]}")
-        print(f"betti_0: {betti_0[:15]}")
-        print(f"betti_1: {betti_1[:15]}")
+        # print(f"scores: {scores[:15]}")
+        # print(f"betti_0: {betti_0[:15]}")
+        # print(f"betti_1: {betti_1[:15]}")
 
         return scores
 

@@ -23,4 +23,4 @@ topo_metrics:
         include_background: False
       guidance: False # Tracked in the guidance
 guided_step_metrics:
-starting_step: ${loss_guidance.starting_step}
+starting_step: 0
