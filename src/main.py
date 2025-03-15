@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 
@@ -10,6 +11,7 @@ from pytorch_lightning.loggers import WandbLogger
 
 import wandb
 from models.base_segmentation import create_segmentor
+from utils.helper import create_wandb_tags
 from utils.hydra_config import SegmentationConfig
 
 
@@ -30,24 +32,28 @@ def main(config: SegmentationConfig):
 
     # wandb login and config
     wandb.login(key=os.environ["WANDB_API_KEY"])
-    wandb.config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+
+    wandb.config = copy.deepcopy(
+        OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+    )
 
     # wandb tags
-    if config.wandb_tags is None:
-        wandb_tags = [
-            config.project_name,
-            config.dataset.name,
-            config.model.name,
-            "multiclass" if config.dataset.mask_transformer.multiclass else "binary",
-        ]
-    else:
-        wandb_tags = config.wandb_tags
+    # if config.wandb_tags is None:
+    #     wandb_tags = [
+    #         config.project_name,
+    #         config.dataset.name,
+    #         str(config.dataset.data_path).split("/")[-1],
+    #         config.model.name,
+    #         "multiclass" if config.dataset.mask_transformer.multiclass else "binary",
+    #     ]
+    # else:
+    #     wandb_tags = config.wandb_tags
+
+    wandb_tags = create_wandb_tags(config)
+    print(f"wandb_tags: {wandb_tags}")
 
     # hydra output dir
-    base_path = os.path.dirname(os.getcwd())
-    print(f"base_path: {base_path}")
     log_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    print(f"log_dir: {log_dir}")
     os.makedirs(log_dir, exist_ok=True)
 
     run = wandb.init(

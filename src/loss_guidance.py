@@ -10,6 +10,7 @@ from pytorch_lightning.loggers import WandbLogger
 
 import wandb
 from models.base_segmentation import create_segmentor
+from utils.helper import create_wandb_tags
 from utils.hydra_config import LossGuidanceInferenceConfig
 from wandb import Api
 
@@ -42,7 +43,7 @@ def main(config: LossGuidanceInferenceConfig):
     run = wandb.init(
         project="difseg",
         config=wandb.config,
-        tags=config.wandb_tags,
+        tags=None,
         job_type="test",
         dir=log_dir,
     )
@@ -85,6 +86,10 @@ def main(config: LossGuidanceInferenceConfig):
 
     if config.metrics is not None:
         old_config.metrics = config.metrics
+
+    wandb_tags = create_wandb_tags(old_config)
+    print(f"wandb_tags: {wandb_tags}")
+    run.tags = wandb_tags
 
     segmentor = create_segmentor(old_config, loss_guided=True)
     seg_model_class, test_loader, model_args = segmentor.initialize(test=True)

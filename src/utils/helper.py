@@ -1,5 +1,29 @@
 import omegaconf
 import torch
+from omegaconf import OmegaConf
+
+
+def create_wandb_tags(config: omegaconf.DictConfig):
+    config = OmegaConf.create(config)
+    wandb_tags = config.wandb_tags if config.wandb_tags is not None else []
+
+    base_tags = [
+        config.project_name,
+        config.dataset.name,
+        str(config.dataset.data_path).split("/")[-1],
+        "multiclass" if config.dataset.mask_transformer.multiclass else "binary",
+    ]
+
+    wandb_tags = base_tags + wandb_tags
+
+    if (
+        "loss_guidance" in config.diffusion
+        and config.diffusion.loss_guidance is not None
+    ):
+        wandb_tags.append(config.diffusion.loss_guidance.guider.name)
+        wandb_tags.append(config.diffusion.loss_guidance.mode)
+
+    return wandb_tags
 
 
 def unpack_batch(batch, phase: str = "train"):
