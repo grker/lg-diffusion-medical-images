@@ -98,8 +98,9 @@ class BaseSegmentation:
 
         assert train_size + val_size + test_size == len(dataset)
 
+        dataloader_generator = torch.Generator().manual_seed(self.config.seed)
         train_dataset, val_dataset, test_dataset = random_split(
-            dataset, [train_size, val_size, test_size]
+            dataset, [train_size, val_size, test_size], generator=dataloader_generator
         )
 
         train_loader = DataLoader(

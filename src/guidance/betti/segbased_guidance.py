@@ -108,18 +108,7 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
 
     def guidance_loss(self, model_output: torch.Tensor, t: int, batch_idx: int):
         x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
-        print(f"max x_softmax: {torch.max(x_softmax)}")
-        print(f"min x_softmax: {torch.min(x_softmax)}")
-        print(
-            f"histogram x_softmax: {torch.histc(x_softmax.flatten(), bins=10, min=0, max=1)}"
-        )
         pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
-
-        print(f"max pseudo_gt: {torch.max(pseudo_gt)}")
-        print(f"min pseudo_gt: {torch.min(pseudo_gt)}")
-        print(
-            f"histogram pseudo_gt: {torch.histc(pseudo_gt.flatten(), bins=10, min=0, max=1)}"
-        )
 
         loss = self.loss_fn(model_output, pseudo_gt)
         print(f"Loss: {loss}")
@@ -129,16 +118,6 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
 class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
     def __init__(self, guider_config: BettiSegmentationGuiderConfig):
         self.base_prob = guider_config.base_prob
-
-        # if guider_config.loss:
-        #     self.loss_fn = single_loss_fn(guider_config.loss)
-        #     self.loss_name = next(iter(guider_config.loss.loss_fns_config.keys()))
-        #     print(f"loss_name: {self.loss_name}")
-        # else:
-        #     from torch.nn import CrossEntropyLoss
-
-        #     self.loss_fn = CrossEntropyLoss()
-        #     self.loss_name = "CrossEntropyLoss"
 
         from torch.nn import BCELoss
 
@@ -153,11 +132,11 @@ class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
         binary_component_map = torch.zeros_like(prediction)
 
         for sample_idx in range(prediction.shape[0]):
-            for _ in range(prediction.shape[1]):
+            for class_idx in range(prediction.shape[1]):
                 component_map = self.component_map(
-                    prediction[sample_idx], betti_0[sample_idx]
+                    prediction[sample_idx][class_idx], betti_0[sample_idx][class_idx]
                 )
-                binary_component_map[sample_idx] = component_map.squeeze(0)
+                binary_component_map[sample_idx][class_idx] = component_map.squeeze(0)
 
         likelihood = binary_component_map * x_softmax
         likelihood = torch.where(likelihood > 0, likelihood, self.base_prob)
@@ -171,6 +150,11 @@ class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
 
         if betti_0 is None:
             raise ValueError("betti_0 must be provided")
+
+        if len(betti_0.shape) == 1:
+            betti_0 = betti_0.unsqueeze(
+                1
+            )  # add dimension for class (for the binary case)
 
         print(f"shape of betti_0: {betti_0.shape}")
 
@@ -342,3 +326,7 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
 
         loss = self.loss_fn(model_output, pseudo_gt)
         return loss
+
+
+class LossGuiderSegmenationCyclesDigits(LossGuiderSegmentationCycles):
+    pass
