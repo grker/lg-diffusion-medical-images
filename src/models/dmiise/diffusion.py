@@ -808,3 +808,137 @@ class DDPM_DPS_3Steps(DDPM_DPS):
             return new_noisy_mask, noisy_mask_grads
         else:
             return new_noisy_mask
+
+
+class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
+    def __init__(
+        self,
+        model: nn.Module,
+        diffusion_config: LossGuidedDiffusionConfig,
+        optimizer_config: OptimizerConfig,
+        metrics: dict,
+        mask_transformer: BaseMaskMapping,
+        loss: torch.nn.Module,
+    ):
+        super().__init__(
+            model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
+        )
+
+    @torch.inference_mode(False)
+    def val_test_step(self, batch, batch_idx, phase):
+        self.model.eval()
+
+        images, gt_masks, gt_train_masks, topo_inputs = unpack_batch(batch, "test")
+        num_samples = images.shape[0]
+        reps = self.repetitions_test if phase == "test" else self.repetitions
+
+        # Run the whole forward pass once to get the reference mask, all steps are unguided
+        reference_mask = torch.rand_like(gt_train_masks, device=images.device)
+
+        for t in tqdm(self.scheduler.timesteps):
+            reference_mask = self.unguided_step(reference_mask, images, t)
+
+        # add the reference mask to the topo_inputs
+        topo_inputs["reference_mask"] = reference_mask
+
+        ensemble_mask = []
+        # run the actual guided forward pass
+        for rep in range(reps):
+            noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
+
+            # unguided diffusion steps
+            for t in tqdm(self.scheduler.timesteps[: -self.starting_step]):
+                noisy_mask = self.unguided_step(noisy_mask, images, t)
+
+            # activate the gradient for the model for the guided steps
+            for name, param in self.model.named_parameters():
+                if not param.requires_grad:
+                    param.requires_grad_(True)
+
+            noisy_mask = noisy_mask.requires_grad_(True)
+
+            if self.mode == "only_guided":
+                noisy_mask = self.only_guidance(
+                    noisy_mask,
+                    topo_inputs,
+                    t - 1,
+                    batch_idx,
+                    gt_masks,
+                    last_step_unguided=self.last_step_unguided,
+                )
+            elif self.mode == "dps_guidance":
+                noisy_mask = self.dps_guidance(
+                    noisy_mask,
+                    images,
+                    topo_inputs,
+                    t - 1,
+                    batch_idx,
+                    gt_masks,
+                    last_step_unguided=self.last_step_unguided,
+                )
+            else:
+                raise ValueError(f"Mode {self.mode} not supported!")
+
+            for name, param in self.model.named_parameters():
+                if param.requires_grad:
+                    param.requires_grad_(False)
+
+            if self.last_step_unguided:
+                noisy_mask = noisy_mask.requires_grad_(False)
+                noisy_mask = self.unguided_step(noisy_mask, images, 0)
+                inputs = MetricsInput(
+                    self.mask_transformer.get_segmentation(
+                        self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
+                    ),
+                    gt_masks,
+                    topo_inputs,
+                )
+
+                self.metric_handler.update_guidance_metrics(inputs, 0)
+
+            # final loss:
+            loss = self.loss_guider.guidance_loss(
+                noisy_mask,
+                0,
+                batch_idx,
+                **topo_inputs,
+            )
+            self.metric_handler.update_loss(
+                {self.loss_guider.loss_name: loss.item()},
+                0,
+            )
+            print(f"final loss: {loss}")
+
+            ensemble_mask.append(noisy_mask.detach().cpu())
+            self.metric_handler.log_guidance_metrics()
+
+        logits = self.mask_transformer.get_logits(
+            torch.stack(
+                ensemble_mask,
+                dim=0,
+            )
+        )
+        seg_mask = self.mask_transformer.get_segmentation(logits)
+        gt_masks = gt_masks.to(device=seg_mask.device)
+
+        # Metrics computation
+        metrics_input = MetricsInput(seg_mask, gt_masks, topo_inputs)
+        self.metric_handler.compute_metrics(metrics_input, phase, self.log)
+
+        # Visualization
+        index = random.randint(0, num_samples - 1)
+        visualize_segmentation(
+            images,
+            gt_masks,
+            seg_mask,
+            None,
+            phase,
+            self.mask_transformer.gt_mapping_for_visualization(),
+            batch_idx,
+            self.num_classes,
+            [index],
+        )
+        if reps > 1:
+            visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
+
+        return 0

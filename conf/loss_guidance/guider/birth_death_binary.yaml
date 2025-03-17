@@ -1,0 +1,12 @@
+defaults:
+  - loss: BirthDeathLoss
+  - _self_
+
+name: BirthDeathGuider
+num_classes: 2
+fixed_betti_numbers: False
+topo_features: null
+downsampling: False
+downsampling_factor: [0.5, 0.5]
+downsampling_mode: bilinear
+modifier: clamp

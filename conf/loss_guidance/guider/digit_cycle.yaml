@@ -1,0 +1,8 @@
+defaults:
+  - loss: bce
+  - _self_
+
+name: LossGuiderSegmenationCyclesDigits
+num_classes: 2
+topo_features: null
+base_prob: 0.1

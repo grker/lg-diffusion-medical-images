@@ -1,0 +1,8 @@
+loss_fns_config:
+  BirthDeathLoss:
+    scale: 1.0
+    args:
+      num_classes: {$loss_guidance.guider.num_classes}
+      alpha: 0.5
+      beta: 0.5
+log_loss_parts: False

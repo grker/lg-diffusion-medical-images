@@ -1,0 +1,9 @@
+defaults:
+  - loss: bce
+  - _self_
+
+name: LossGuiderSegmentationComponentsDigits
+num_classes: 2
+fixed_betti_numbers: False
+topo_features: null
+base_prob: 0.1
