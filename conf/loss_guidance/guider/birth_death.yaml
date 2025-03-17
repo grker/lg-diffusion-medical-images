@@ -1,9 +1,10 @@
 defaults:
-  - loss: birth_death_loss
+  - loss: BirthDeathLoss
   - _self_
 
-name: Birth_Death_Guider
+name: BirthDeathGuider
 num_classes: 4
+fixed_betti_numbers: True
 topo_features:
   0:
     0: 1

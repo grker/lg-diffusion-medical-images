@@ -4,6 +4,7 @@ defaults:
 
 name: LossGuiderSegmentationComponents
 num_classes: 4
+fixed_betti_numbers: True
 topo_features:
   0:
     0: 1

@@ -31,8 +31,10 @@ class ClassWiseDiceMetric(monai.metrics.DiceMetric):
         super().__init__(**kwargs)
 
         self.num_classes = num_classes
+        print(f"class wise dice metric num classes: {self.num_classes}")
 
     def __call__(self, y_pred: torch.Tensor, y: torch.Tensor):
+        print(f"y_pred shape: {y_pred.shape}, y shape: {y.shape}")
         scores = super().__call__(
             one_hot(y_pred, num_classes=self.num_classes),
             one_hot(y, num_classes=self.num_classes),

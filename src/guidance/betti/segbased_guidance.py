@@ -1,5 +1,4 @@
 import torch
-from torch.nn import BCELoss
 
 from utils.helper import get_fixed_betti_numbers
 from utils.hydra_config import BettiSegmentationGuiderConfig
@@ -80,16 +79,22 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
     def __init__(self, guider_config: BettiSegmentationGuiderConfig):
         super().__init__(guider_config)
 
-    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
+    def get_segmentation(self, x_softmax: torch.Tensor):
         prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)
         prediction = torch.zeros_like(x_softmax).scatter_(1, prediction, 1)
+        return prediction
+
+    def pseudo_gt(
+        self, x_softmax: torch.Tensor, t: int, batch_idx: int, betti_0: torch.Tensor
+    ):
+        prediction = self.get_segmentation(x_softmax)
 
         binary_component_map = torch.zeros_like(prediction)
 
         for sample_idx in range(prediction.shape[0]):
             for class_idx in range(prediction.shape[1]):
                 component_map = self.component_map(
-                    prediction[sample_idx, class_idx], self.topo_features[class_idx][0]
+                    prediction[sample_idx, class_idx], betti_0[sample_idx][class_idx]
                 )
                 binary_component_map[sample_idx, class_idx] = component_map.squeeze(0)
 
@@ -104,15 +109,20 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
 
         likelihood = binary_component_map * x_softmax
         likelihood = torch.where(likelihood > 0, likelihood, self.base_prob)
-        # likelihood = binary_component_map
 
         return likelihood
 
     def guidance_loss(
         self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
     ):
+        betti_0, _ = self.batched_betti(
+            model_output.shape[0], only_betti_0=True, **kwargs
+        )
+
+        assert betti_0.shape[:2] == model_output.shape[:2]
+
         x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
-        pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
+        pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx, betti_0)
 
         loss = self.loss_fn(model_output, pseudo_gt)
         print(f"Loss: {loss}")
@@ -120,45 +130,20 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
 
 
 class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
+    possible_losses = ["BCELoss"]
+
     def __init__(self, guider_config: BettiSegmentationGuiderConfig):
         super().__init__(guider_config)
 
-        from torch.nn import BCELoss
-
-        self.loss_fn = BCELoss()
-        self.loss_name = "BCELoss"
-
-    def pseudo_gt(
-        self, x_softmax: torch.Tensor, t: int, batch_idx: int, betti_0: torch.Tensor
-    ):
-        prediction = (x_softmax > 0.5).to(torch.float32)
-
-        binary_component_map = torch.zeros_like(prediction)
-
-        for sample_idx in range(prediction.shape[0]):
-            for class_idx in range(prediction.shape[1]):
-                component_map = self.component_map(
-                    prediction[sample_idx][class_idx], betti_0[sample_idx][class_idx]
-                )
-                binary_component_map[sample_idx][class_idx] = component_map.squeeze(0)
-
-        likelihood = binary_component_map * x_softmax
-        likelihood = torch.where(likelihood > 0, likelihood, self.base_prob)
-
-        return likelihood
+    def get_segmentation(self, x_softmax: torch.Tensor):
+        return (x_softmax > 0.5).to(torch.float32)
 
     def guidance_loss(
         self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
     ):
-        betti_0 = kwargs.get("betti_0", None)
-
-        if betti_0 is None:
-            raise ValueError("betti_0 must be provided")
-
-        if len(betti_0.shape) == 1:
-            betti_0 = betti_0.unsqueeze(
-                1
-            )  # add dimension for class (for the binary case)
+        betti_0, _ = self.batched_betti(
+            model_output.shape[0], only_betti_0=True, **kwargs
+        )
 
         assert betti_0.shape[:2] == model_output.shape[:2]
 
@@ -344,8 +329,9 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
     ):
         x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1).detach()
 
-        betti_0_batched = self.betti_0.unsqueeze(0).repeat(x_softmax.shape[0], 1)
-        betti_1_batched = self.betti_1.unsqueeze(0).repeat(x_softmax.shape[0], 1)
+        betti_0_batched, betti_1_batched = self.batched_betti(
+            x_softmax.shape[0], **kwargs
+        )
 
         assert betti_0_batched.shape[:2] == x_softmax.shape[:2]
         assert betti_1_batched.shape[:2] == x_softmax.shape[:2]
@@ -359,11 +345,10 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
 
 
 class LossGuiderSegmenationCyclesDigits(LossGuiderSegmentationCycles):
+    possible_losses = ["BCELoss"]
+
     def __init__(self, guider_config: BettiSegmentationGuiderConfig):
         super().__init__(guider_config)
-
-        self.loss_fn = BCELoss()
-        self.loss_name = "BCELoss"
 
     def get_segmentation(self, x_softmax: torch.Tensor):
         return (x_softmax > 0.5).to(torch.float32)
@@ -371,24 +356,8 @@ class LossGuiderSegmenationCyclesDigits(LossGuiderSegmentationCycles):
     def guidance_loss(
         self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
     ):
-        betti_0 = kwargs.get("betti_0", None)
-        betti_1 = kwargs.get("betti_1", None)
-
-        if betti_0 is None:
-            raise ValueError("betti_0 must be provided")
-
-        if betti_1 is None:
-            raise ValueError("betti_1 must be provided")
-
-        if len(betti_0.shape) == 1:
-            betti_0 = betti_0.unsqueeze(
-                1
-            )  # add dimension for class (for the binary case)
-
-        if len(betti_1.shape) == 1:
-            betti_1 = betti_1.unsqueeze(
-                1
-            )  # add dimension for class (for the binary case)
+        print(f" key in kwargs: {kwargs.keys()}")
+        betti_0, betti_1 = self.batched_betti(model_output.shape[0], **kwargs)
 
         assert betti_0.shape[:2] == model_output.shape[:2]
         assert betti_1.shape[:2] == model_output.shape[:2]

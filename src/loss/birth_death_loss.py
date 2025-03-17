@@ -2,140 +2,119 @@ import torch
 
 from utils.helper import check_topofeatures
 
+# class BirthDeathLoss(torch.nn.Module):
+#     def __init__(self, betti_numbers: dict, normalize_mode: str = "sum"):
+#         super().__init__()
 
-class BirthDeathLoss(torch.nn.Module):
-    def __init__(self, betti_numbers: dict, normalize_mode: str = "sum"):
-        super().__init__()
+#         self.good_intervals_0 = [betti_numbers[i][0] for i in range(len(betti_numbers))]
+#         self.good_intervals_1 = [betti_numbers[i][1] for i in range(len(betti_numbers))]
 
-        self.good_intervals_0 = [betti_numbers[i][0] for i in range(len(betti_numbers))]
-        self.good_intervals_1 = [betti_numbers[i][1] for i in range(len(betti_numbers))]
+#         self.normalize_mode = normalize_mode
 
-        self.normalize_mode = normalize_mode
+#     def forward(
+#         self,
+#         prediction: torch.Tensor,
+#         intervals_comp_0: list[list[torch.Tensor]] = None,
+#         intervals_comp_1: list[list[torch.Tensor]] = None,
+#     ):
+#         """
+#         params:
+#             prediction: torch.Tensor, shape (batch_size, num_classes, height, width)
+#             intervals_comp_0: list[list[torch.Tensor]], s.t. len(intervals_comp_0) == batch_size, the tensors have shape (num_intervals, 2, 2)
+#             intervals_comp_1: list[list[torch.Tensor]], s.t. len(intervals_comp_1) == batch_size, the tensors have shape (num_intervals, 2, 2)
+#         returns:
+#             torch.Tensor, shape (0,)
+#         """
+#         if intervals_comp_0 is not None:
+#             loss_0 = self._compute_interval_diff(prediction, intervals_comp_0, self.good_intervals_0)
+#         else:
+#             loss_0 = 0
 
-    def forward(
-        self,
-        prediction: torch.Tensor,
-        intervals_comp_0: list[list[torch.Tensor]] = None,
-        intervals_comp_1: list[list[torch.Tensor]] = None,
-    ):
-        """
-        params:
-            prediction: torch.Tensor, shape (batch_size, num_classes, height, width)
-            intervals_comp_0: list[list[torch.Tensor]], s.t. len(intervals_comp_0) == batch_size, the tensors have shape (num_intervals, 2, 2)
-            intervals_comp_1: list[list[torch.Tensor]], s.t. len(intervals_comp_1) == batch_size, the tensors have shape (num_intervals, 2, 2)
-        returns:
-            torch.Tensor, shape (0,)
-        """
-        if intervals_comp_0 is not None:
-            loss_0 = self._compute_interval_diff(
-                prediction, intervals_comp_0, self.good_intervals_0
-            )
-        else:
-            loss_0 = 0
+#         if intervals_comp_1 is not None:
+#             loss_1 = self._compute_interval_diff(prediction, intervals_comp_1, self.good_intervals_1)
+#         else:
+#             loss_1 = 0
 
-        if intervals_comp_1 is not None:
-            loss_1 = self._compute_interval_diff(
-                prediction, intervals_comp_1, self.good_intervals_1
-            )
-        else:
-            loss_1 = 0
+#         print(f"birth death loss: loss_0: {loss_0}, loss_1: {loss_1}, total_loss: {loss_0 + loss_1}")
 
-        print(
-            f"birth death loss: loss_0: {loss_0}, loss_1: {loss_1}, total_loss: {loss_0 + loss_1}"
-        )
+#         return loss_0 + loss_1
 
-        return loss_0 + loss_1
+#     def _compute_interval_diff(
+#         self,
+#         prediction: torch.Tensor,
+#         intervals: list[list[torch.Tensor]],
+#         num_comps: list[int],
+#     ):
+#         device = prediction.device
+#         num_samples = prediction.shape[0]
+#         num_classes = prediction.shape[1]
 
-    def _compute_interval_diff(
-        self,
-        prediction: torch.Tensor,
-        intervals: list[list[torch.Tensor]],
-        num_comps: list[int],
-    ):
-        device = prediction.device
-        num_samples = prediction.shape[0]
-        num_classes = prediction.shape[1]
+#         assert num_classes == len(num_comps)
 
-        assert num_classes == len(num_comps)
+#         num_intervals_list = [len(intervals[i][j]) for i in range(num_samples) for j in range(num_classes)]
 
-        num_intervals_list = [
-            len(intervals[i][j]) for i in range(num_samples) for j in range(num_classes)
-        ]
+#         concated_intervals = [torch.cat(intervals[i], dim=0) for i in range(num_samples)]
+#         concated_intervals = torch.cat(concated_intervals, dim=0)
 
-        concated_intervals = [
-            torch.cat(intervals[i], dim=0) for i in range(num_samples)
-        ]
-        concated_intervals = torch.cat(concated_intervals, dim=0)
+#         sample_indices = [
+#             torch.full((sum(num_intervals_list[i * num_classes : (i + 1) * num_classes]),), i)
+#             for i in range(num_samples)
+#         ]
+#         sample_indices = torch.cat(sample_indices, dim=0)
 
-        sample_indices = [
-            torch.full(
-                (sum(num_intervals_list[i * num_classes : (i + 1) * num_classes]),), i
-            )
-            for i in range(num_samples)
-        ]
-        sample_indices = torch.cat(sample_indices, dim=0)
+#         class_indices = [
+#             torch.full((num_intervals_list[i],), i % num_classes) for i in range(num_classes * num_samples)
+#         ]
+#         class_indices = torch.cat(class_indices, dim=0)
 
-        class_indices = [
-            torch.full((num_intervals_list[i],), i % num_classes)
-            for i in range(num_classes * num_samples)
-        ]
-        class_indices = torch.cat(class_indices, dim=0)
+#         good_intervals = [
+#             torch.cat(
+#                 (
+#                     torch.ones(
+#                         min(num_comps[i % num_classes], num_intervals_list[i]),
+#                         device=device,
+#                     ),
+#                     torch.zeros(
+#                         num_intervals_list[i] - min(num_comps[i % num_classes], num_intervals_list[i]),
+#                         device=device,
+#                     ),
+#                 ),
+#                 dim=0,
+#             )
+#             for i in range(num_samples * num_classes)
+#         ]
+#         good_intervals = torch.cat(good_intervals, dim=0)
 
-        good_intervals = [
-            torch.cat(
-                (
-                    torch.ones(
-                        min(num_comps[i % num_classes], num_intervals_list[i]),
-                        device=device,
-                    ),
-                    torch.zeros(
-                        num_intervals_list[i]
-                        - min(num_comps[i % num_classes], num_intervals_list[i]),
-                        device=device,
-                    ),
-                ),
-                dim=0,
-            )
-            for i in range(num_samples * num_classes)
-        ]
-        good_intervals = torch.cat(good_intervals, dim=0)
+#         birth_indices_x = concated_intervals[:, 0, 0]
+#         birth_indices_y = concated_intervals[:, 0, 1]
+#         death_indices_x = concated_intervals[:, 1, 0]
+#         death_indices_y = concated_intervals[:, 1, 1]
 
-        birth_indices_x = concated_intervals[:, 0, 0]
-        birth_indices_y = concated_intervals[:, 0, 1]
-        death_indices_x = concated_intervals[:, 1, 0]
-        death_indices_y = concated_intervals[:, 1, 1]
+#         birth_values = prediction[sample_indices, class_indices, birth_indices_x, birth_indices_y]
+#         death_values = prediction[sample_indices, class_indices, death_indices_x, death_indices_y]
 
-        birth_values = prediction[
-            sample_indices, class_indices, birth_indices_x, birth_indices_y
-        ]
-        death_values = prediction[
-            sample_indices, class_indices, death_indices_x, death_indices_y
-        ]
+#         interval_diff = (birth_values - death_values) ** 2
+#         return self.normalize(interval_diff, good_intervals, num_samples, num_classes)
 
-        interval_diff = (birth_values - death_values) ** 2
-        return self.normalize(interval_diff, good_intervals, num_samples, num_classes)
+#     def normalize(
+#         self,
+#         interval_diff: torch.Tensor,
+#         good_intervals: torch.Tensor,
+#         num_samples: int = 1,
+#         num_classes: int = 1,
+#     ):
+#         interval_diff = torch.where(good_intervals == 1, 1 - interval_diff, interval_diff)
 
-    def normalize(
-        self,
-        interval_diff: torch.Tensor,
-        good_intervals: torch.Tensor,
-        num_samples: int = 1,
-        num_classes: int = 1,
-    ):
-        interval_diff = torch.where(
-            good_intervals == 1, 1 - interval_diff, interval_diff
-        )
-
-        if self.normalize_mode == "sum":
-            return torch.sum(interval_diff)
-        elif self.normalize_mode == "batch_mean":
-            return torch.sum(interval_diff) / num_samples
-        elif self.normalize_mode == "batch_class_mean":
-            return torch.sum(interval_diff) / (num_samples * num_classes)
-        elif self.normalize_mode == "interval_mean":
-            return torch.mean(interval_diff)
-        else:
-            raise ValueError(f"Invalid normalize mode: {self.normalize_mode}")
+#         if self.normalize_mode == "sum":
+#             return torch.sum(interval_diff)
+#         elif self.normalize_mode == "batch_mean":
+#             return torch.sum(interval_diff) / num_samples
+#         elif self.normalize_mode == "batch_class_mean":
+#             return torch.sum(interval_diff) / (num_samples * num_classes)
+#         elif self.normalize_mode == "interval_mean":
+#             return torch.mean(interval_diff)
+#         else:
+#             raise ValueError(f"Invalid normalize mode: {self.normalize_mode}")
 
 
 class BirthDeathIntervalLoss(torch.nn.Module):
@@ -263,7 +242,7 @@ class BirthDeathIntervalLoss(torch.nn.Module):
         return loss
 
 
-class BirthDeathLossNew(torch.nn.Module):
+class BirthDeathLoss(torch.nn.Module):
     def __init__(
         self,
         num_classes: int,
@@ -303,20 +282,6 @@ class BirthDeathLossNew(torch.nn.Module):
         print(f"loss_0: {loss_0}, loss_1: {loss_1}, total_loss: {total_loss}")
 
         return total_loss
-
-    # def _get_betti_numbers(self, labels: torch.Tensor):
-    #     """
-    #     This function returns the betti numbers for each sample in the batch. This is achieved by summing the betti numbers of the labels.
-    #     params:
-    #         labels: torch.Tensor, shape (batch_size, num_labels)
-    #     returns:
-    #         betti_0_per_label: torch.Tensor, shape (batch_size,)
-    #         betti_1_per_label: torch.Tensor, shape (batch_size,)
-    #     """
-    #     betti_0_per_label = (self.good_intervals_0[labels] * (labels >= 0)).sum(dim=1)
-    #     betti_1_per_label = (self.good_intervals_1[labels] * (labels >= 0)).sum(dim=1)
-
-    #     return betti_0_per_label, betti_1_per_label
 
     def _compute_interval_diff(
         self,

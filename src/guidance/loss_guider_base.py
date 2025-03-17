@@ -41,11 +41,51 @@ class LossGuiderBetti(LossGuider):
         )
 
         if guider_config.loss:
-            self.loss_fn = single_loss_fn(guider_config.loss)
-            self.loss_name = next(iter(guider_config.loss.loss_fns_config.keys()))
-            print(f"loss_name: {self.loss_name}")
-        else:
-            from torch.nn import CrossEntropyLoss
+            loss_name = next(iter(guider_config.loss.loss_fns_config.keys()))
+            print(f"loss_name: {loss_name}")
 
-            self.loss_fn = CrossEntropyLoss()
-            self.loss_name = "CrossEntropyLoss"
+            if self.check_loss_option(loss_name):
+                self.loss_fn = single_loss_fn(guider_config.loss)
+                self.loss_name = loss_name
+            else:
+                raise ValueError(
+                    f"Loss function {loss_name} is not supported for the loss guider {guider_config.name}"
+                )
+        else:
+            raise ValueError(
+                f"Loss function not specified for the loss guider {guider_config.name}"
+            )
+
+    def check_loss_option(self, name: str):
+        if hasattr(self, "possible_losses"):
+            losses = getattr(self, "possible_losses")
+            return name in losses
+        else:
+            return True
+
+    def batched_betti(
+        self, batch_size: int, only_betti_0: bool = False, **kwargs: dict
+    ):
+        if self.fixed_betti_numbers:
+            betti_0_batched = self.betti_0.unsqueeze(0).repeat(batch_size, 1)
+            betti_1_batched = self.betti_1.unsqueeze(0).repeat(batch_size, 1)
+        else:
+            betti_0_batched = kwargs.get("betti_0", None)
+            betti_1_batched = kwargs.get("betti_1", None)
+
+        if betti_0_batched is None:
+            raise ValueError("betti_0 must be provided")
+
+        if betti_1_batched is None and not only_betti_0:
+            raise ValueError("betti_1 must be provided")
+
+        if len(betti_0_batched.shape) == 1:
+            betti_0_batched = betti_0_batched.unsqueeze(1)
+
+        if only_betti_0:
+            return betti_0_batched, None
+
+        if len(betti_1_batched.shape) == 1:
+            betti_1_batched = betti_1_batched.unsqueeze(1)
+
+        return betti_0_batched, betti_1_batched

@@ -137,4 +137,8 @@ def get_fixed_betti_numbers(topo_feature: dict, num_classes: int):
     betti_0 = torch.tensor([topo_feature[i][0] for i in range(num_classes)])
     betti_1 = torch.tensor([topo_feature[i][1] for i in range(num_classes)])
 
+    print(f"betti_0 shape: {betti_0.shape}, betti_1 shape: {betti_1.shape}")
+    print(f"betti_0: {betti_0}")
+    print(f"betti_1: {betti_1}")
+
     return betti_0, betti_1

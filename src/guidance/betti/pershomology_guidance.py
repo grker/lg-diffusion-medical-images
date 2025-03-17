@@ -241,6 +241,8 @@ class Birth_Death_Guider_Dim0(Birth_Death_Guider):
 
 
 class BirthDeathGuider(PersHomologyBettiGuidance):
+    possible_losses = ["BirthDeathLoss", "BirthDeathIntervalLoss"]
+
     def __init__(self, guider_config: BettiBirthDeathGuiderConfig):
         super().__init__(guider_config)
 
@@ -295,28 +297,9 @@ class BirthDeathGuider(PersHomologyBettiGuidance):
     def guidance_loss(
         self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
     ):
-        if self.fixed_betti_numbers:
-            betti_0_batched = self.betti_0.unsqueeze(0).repeat(model_output.shape[0], 1)
-            betti_1_batched = self.betti_1.unsqueeze(0).repeat(model_output.shape[0], 1)
-        else:
-            betti_0_batched = kwargs["betti_0"]
-            betti_1_batched = kwargs["betti_1"]
-
-            if betti_0_batched is None:
-                raise ValueError("betti_0 must be provided")
-
-            if betti_1_batched is None:
-                raise ValueError("betti_1 must be provided")
-
-            if len(betti_0_batched.shape) == 1:
-                betti_0_batched = betti_0_batched.unsqueeze(
-                    1
-                )  # add dimension for class (for the binary case)
-
-            if len(betti_1_batched.shape) == 1:
-                betti_1_batched = betti_1_batched.unsqueeze(
-                    1
-                )  # add dimension for class (for the binary case)
+        betti_0_batched, betti_1_batched = self.batched_betti(
+            model_output.shape[0], kwargs
+        )
 
         assert betti_0_batched.shape[:2] == model_output.shape[:2]
         assert betti_1_batched.shape[:2] == model_output.shape[:2]
@@ -342,3 +325,18 @@ class BirthDeathGuider(PersHomologyBettiGuidance):
             betti_1=betti_1_batched,
         )
         return loss
+
+    def downsample_model_output(
+        self,
+        model_output: torch.Tensor,
+        scale_factor: tuple[float, float],
+        mode: str = "bilinear",
+    ):
+        from torch.nn.functional import interpolate
+
+        return interpolate(
+            model_output,
+            scale_factor=scale_factor,
+            mode=mode,
+            align_corners=False,
+        )
