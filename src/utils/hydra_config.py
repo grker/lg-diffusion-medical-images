@@ -193,7 +193,7 @@ class GuiderConfig:
 
 
 class BettiGuiderConfig(GuiderConfig):
-    topo_features: dict
+    topo_features: dict | None
 
 
 class BettiSegmentationGuiderConfig(BettiGuiderConfig):

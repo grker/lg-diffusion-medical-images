@@ -371,6 +371,7 @@ class DDPM_DPS(DDPM):
         import guidance
 
         if hasattr(guidance, guider_config.name):
+            print(f"guider config: {guider_config}")
             return getattr(guidance, guider_config.name)(guider_config)
         else:
             raise ValueError(f"PseudoGTGenerator {guider_config.name} not found!")

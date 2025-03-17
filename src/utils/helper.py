@@ -82,6 +82,8 @@ def check_topofeatures(topo_features: dict, num_classes: int):
     """
     Check if the topo_features are valid.
     """
+    if topo_features is None:
+        return None
 
     if len(topo_features) != num_classes:
         raise ValueError(
@@ -121,3 +123,18 @@ def check_topofeatures(topo_features: dict, num_classes: int):
             )
 
     return dict(topo_features)
+
+
+def get_fixed_betti_numbers(topo_feature: dict, num_classes: int):
+    if topo_feature is None:
+        return None, None
+
+    if len(topo_feature) != num_classes:
+        raise ValueError(
+            f"Expected {num_classes} topo_feature definitions, but got {len(topo_feature)}"
+        )
+
+    betti_0 = torch.tensor([topo_feature[i][0] for i in range(num_classes)])
+    betti_1 = torch.tensor([topo_feature[i][1] for i in range(num_classes)])
+
+    return betti_0, betti_1

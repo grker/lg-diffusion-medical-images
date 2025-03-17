@@ -6,6 +6,6 @@ wandb_username: difseg
 wandb_project: difseg
 run_id: 29bjivsr
 seed: 42
-wandb_tags: [loss_guidance, "${loss_guidance.guider.name}"]
+wandb_tags: [loss_guidance]
 test_batch_size: 4
 repetitions: [1]

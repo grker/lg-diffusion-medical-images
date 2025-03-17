@@ -1,5 +1,7 @@
 import torch
+from torch.nn import BCELoss
 
+from utils.helper import get_fixed_betti_numbers
 from utils.hydra_config import BettiSegmentationGuiderConfig
 
 from ..loss_guider_base import LossGuiderBetti
@@ -106,7 +108,9 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
 
         return likelihood
 
-    def guidance_loss(self, model_output: torch.Tensor, t: int, batch_idx: int):
+    def guidance_loss(
+        self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
+    ):
         x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1)
         pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx)
 
@@ -117,7 +121,7 @@ class LossGuiderSegmentationComponents(SegBasedBettiGuidance):
 
 class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
     def __init__(self, guider_config: BettiSegmentationGuiderConfig):
-        self.base_prob = guider_config.base_prob
+        super().__init__(guider_config)
 
         from torch.nn import BCELoss
 
@@ -156,7 +160,7 @@ class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
                 1
             )  # add dimension for class (for the binary case)
 
-        print(f"shape of betti_0: {betti_0.shape}")
+        assert betti_0.shape[:2] == model_output.shape[:2]
 
         x_softmax = torch.sigmoid(model_output)
         pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx, betti_0).to(
@@ -176,9 +180,24 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
     def __init__(self, guider_config: BettiSegmentationGuiderConfig):
         super().__init__(guider_config)
 
-    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
+        self.betti_0, self.betti_1 = get_fixed_betti_numbers(
+            self.topo_features, self.num_classes
+        )
+
+    def get_segmentation(self, x_softmax: torch.Tensor):
         prediction = torch.argmax(x_softmax, dim=1).unsqueeze(1)
         prediction = torch.zeros_like(x_softmax).scatter_(1, prediction, 1)
+        return prediction
+
+    def pseudo_gt(
+        self,
+        x_softmax: torch.Tensor,
+        t: int,
+        batch_idx: int,
+        betti_0: torch.Tensor,
+        betti_1: torch.Tensor,
+    ):
+        prediction = self.get_segmentation(x_softmax)
 
         binary_component_map = torch.zeros_like(prediction)
 
@@ -189,7 +208,7 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
                 )
 
                 comp_map = self.component_map(
-                    prediction[sample_idx, class_idx], self.topo_features[class_idx][0]
+                    prediction[sample_idx, class_idx], betti_0[sample_idx, class_idx]
                 )
 
                 binary_component_map[sample_idx, class_idx] = (
@@ -197,7 +216,7 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
                         holes_map,
                         comp_map,
                         holes,
-                        self.topo_features[class_idx][1],
+                        betti_1[sample_idx, class_idx],
                     )
                 )
 
@@ -320,13 +339,64 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
 
         return component_map_copy + holes_within_component
 
-    def guidance_loss(self, model_output: torch.Tensor, t: int, batch_idx: int):
+    def guidance_loss(
+        self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
+    ):
         x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1).detach()
-        pseudo_gt = self.pseudo_gt(x_softmax, t, batch_idx)
+
+        betti_0_batched = self.betti_0.unsqueeze(0).repeat(x_softmax.shape[0], 1)
+        betti_1_batched = self.betti_1.unsqueeze(0).repeat(x_softmax.shape[0], 1)
+
+        assert betti_0_batched.shape[:2] == x_softmax.shape[:2]
+        assert betti_1_batched.shape[:2] == x_softmax.shape[:2]
+
+        pseudo_gt = self.pseudo_gt(
+            x_softmax, t, batch_idx, betti_0_batched, betti_1_batched
+        )
 
         loss = self.loss_fn(model_output, pseudo_gt)
         return loss
 
 
 class LossGuiderSegmenationCyclesDigits(LossGuiderSegmentationCycles):
-    pass
+    def __init__(self, guider_config: BettiSegmentationGuiderConfig):
+        super().__init__(guider_config)
+
+        self.loss_fn = BCELoss()
+        self.loss_name = "BCELoss"
+
+    def get_segmentation(self, x_softmax: torch.Tensor):
+        return (x_softmax > 0.5).to(torch.float32)
+
+    def guidance_loss(
+        self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
+    ):
+        betti_0 = kwargs.get("betti_0", None)
+        betti_1 = kwargs.get("betti_1", None)
+
+        if betti_0 is None:
+            raise ValueError("betti_0 must be provided")
+
+        if betti_1 is None:
+            raise ValueError("betti_1 must be provided")
+
+        if len(betti_0.shape) == 1:
+            betti_0 = betti_0.unsqueeze(
+                1
+            )  # add dimension for class (for the binary case)
+
+        if len(betti_1.shape) == 1:
+            betti_1 = betti_1.unsqueeze(
+                1
+            )  # add dimension for class (for the binary case)
+
+        assert betti_0.shape[:2] == model_output.shape[:2]
+        assert betti_1.shape[:2] == model_output.shape[:2]
+
+        x_softmax = torch.sigmoid(model_output)
+        pseudo_gt = self.pseudo_gt(
+            x_softmax.detach(), t, batch_idx, betti_0, betti_1
+        ).to(device=x_softmax.device)
+
+        loss = self.loss_fn(x_softmax, pseudo_gt)
+        return loss
