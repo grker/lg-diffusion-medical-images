@@ -1,7 +1,7 @@
 import torch
 
 from loss import single_loss_fn
-from utils.helper import check_topofeatures
+from utils.helper import check_topofeatures, get_fixed_betti_numbers
 from utils.hydra_config import BettiGuiderConfig, GuiderConfig
 
 
@@ -32,8 +32,12 @@ class LossGuiderBetti(LossGuider):
     def __init__(self, guider_config: BettiGuiderConfig):
         super().__init__(guider_config)
 
+        self.fixed_betti_numbers = guider_config.fixed_betti_numbers
         self.topo_features = check_topofeatures(
             guider_config.topo_features, guider_config.num_classes
+        )
+        self.betti_0, self.betti_1 = get_fixed_betti_numbers(
+            self.topo_features, guider_config.num_classes
         )
 
         if guider_config.loss:

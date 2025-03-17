@@ -194,6 +194,7 @@ class GuiderConfig:
 
 class BettiGuiderConfig(GuiderConfig):
     topo_features: dict | None
+    fixed_betti_numbers: bool
 
 
 class BettiSegmentationGuiderConfig(BettiGuiderConfig):

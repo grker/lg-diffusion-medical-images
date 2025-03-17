@@ -263,33 +263,26 @@ class BirthDeathIntervalLoss(torch.nn.Module):
         return loss
 
 
-class BirthDeathBinary(BirthDeathIntervalLoss):
+class BirthDeathLossNew(torch.nn.Module):
     def __init__(
         self,
         num_classes: int,
         alpha: float = 0.5,
         beta: float = 0.5,
-        betti_numbers: dict = None,
     ):
+        super().__init__()
+
         self.alpha = alpha
         self.beta = beta
         self.num_classes = num_classes
-
-        self.betti_numbers = check_topofeatures(betti_numbers, num_classes)
-
-        self.good_intervals_0 = [
-            self.betti_numbers[i][0] for i in range(len(self.betti_numbers))
-        ]
-        self.good_intervals_1 = [
-            self.betti_numbers[i][1] for i in range(len(self.betti_numbers))
-        ]
 
     def forward(
         self,
         prediction: torch.Tensor,
         intervals_comp_0: list[list[torch.Tensor]] = None,
         intervals_comp_1: list[list[torch.Tensor]] = None,
-        labels: torch.Tensor = None,
+        betti_0: torch.Tensor = None,
+        betti_1: torch.Tensor = None,
     ):
         """
         params:
@@ -299,36 +292,31 @@ class BirthDeathBinary(BirthDeathIntervalLoss):
             labels: torch.Tensor, shape (batch_size, num_labels)
 
         """
-        betti_0_per_label, betti_1_per_label = self._get_betti_numbers(labels)
 
         if intervals_comp_0 is not None:
-            loss_0 = self._compute_interval_diff(
-                prediction, intervals_comp_0, betti_0_per_label
-            )
+            loss_0 = self._compute_interval_diff(prediction, intervals_comp_0, betti_0)
 
         if intervals_comp_1 is not None:
-            loss_1 = self._compute_interval_diff(
-                prediction, intervals_comp_1, betti_1_per_label
-            )
+            loss_1 = self._compute_interval_diff(prediction, intervals_comp_1, betti_1)
 
         total_loss = self.alpha * loss_0 + (1 - self.alpha) * loss_1
         print(f"loss_0: {loss_0}, loss_1: {loss_1}, total_loss: {total_loss}")
 
         return total_loss
 
-    def _get_betti_numbers(self, labels: torch.Tensor):
-        """
-        This function returns the betti numbers for each sample in the batch. This is achieved by summing the betti numbers of the labels.
-        params:
-            labels: torch.Tensor, shape (batch_size, num_labels)
-        returns:
-            betti_0_per_label: torch.Tensor, shape (batch_size,)
-            betti_1_per_label: torch.Tensor, shape (batch_size,)
-        """
-        betti_0_per_label = (self.good_intervals_0[labels] * (labels >= 0)).sum(dim=1)
-        betti_1_per_label = (self.good_intervals_1[labels] * (labels >= 0)).sum(dim=1)
+    # def _get_betti_numbers(self, labels: torch.Tensor):
+    #     """
+    #     This function returns the betti numbers for each sample in the batch. This is achieved by summing the betti numbers of the labels.
+    #     params:
+    #         labels: torch.Tensor, shape (batch_size, num_labels)
+    #     returns:
+    #         betti_0_per_label: torch.Tensor, shape (batch_size,)
+    #         betti_1_per_label: torch.Tensor, shape (batch_size,)
+    #     """
+    #     betti_0_per_label = (self.good_intervals_0[labels] * (labels >= 0)).sum(dim=1)
+    #     betti_1_per_label = (self.good_intervals_1[labels] * (labels >= 0)).sum(dim=1)
 
-        return betti_0_per_label, betti_1_per_label
+    #     return betti_0_per_label, betti_1_per_label
 
     def _compute_interval_diff(
         self,
@@ -345,14 +333,55 @@ class BirthDeathBinary(BirthDeathIntervalLoss):
         """
 
         total_loss = 0.0
-
         for sample_idx in range(prediction.shape[0]):
-            sample_loss = self.interval_diff_sum(
-                prediction[sample_idx],
-                intervals[sample_idx][0],
-                num_comps[sample_idx],
-            )
+            sample_loss = 0.0
+            for class_idx in range(prediction.shape[1]):
+                if intervals[sample_idx][class_idx].shape[0] > 0:
+                    sample_loss += self.interval_diff_sum(
+                        prediction[sample_idx, class_idx],
+                        intervals[sample_idx][class_idx],
+                        num_comps[sample_idx][class_idx],
+                    )
 
-            total_loss += sample_loss
+            total_loss += sample_loss / prediction.shape[1]
 
         return total_loss / prediction.shape[0]
+
+    def interval_diff_sum(
+        self, prediction: torch.Tensor, intervals: torch.Tensor, num_comps: int
+    ):
+        """
+        params:
+            prediction: torch.Tensor, shape (height, width)
+            intervals: torch.Tensor, shape (num_intervals, 2, 2)
+            num_comps: int, number of components in the interval
+        returns:
+            torch.Tensor, shape (0,)
+        """
+        total_intervals = intervals.shape[0]
+        num_bad_intervals = max(total_intervals - num_comps, 0)
+        num_good_intervals = min(total_intervals, num_comps)
+
+        birth_values_x = intervals[:, 0, 0]
+        birth_values_y = intervals[:, 0, 1]
+        death_values_x = intervals[:, 1, 0]
+        death_values_y = intervals[:, 1, 1]
+
+        birth_values = prediction[birth_values_x, birth_values_y]
+        death_values = prediction[death_values_x, death_values_y]
+
+        interval_diff = (birth_values - death_values) ** 2
+
+        loss = (
+            self.beta * (1 - interval_diff[:num_good_intervals]).sum()
+            if num_good_intervals > 0
+            else 0.0
+        )
+
+        loss += (
+            (1 - self.beta) * interval_diff[num_good_intervals:].sum()
+            if num_bad_intervals > 0
+            else 0.0
+        )
+
+        return loss

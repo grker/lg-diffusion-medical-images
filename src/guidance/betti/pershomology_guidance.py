@@ -125,6 +125,7 @@ class PersHomologyBettiGuidanceDim0_Comps(PersHomologyBettiGuidance):
 class Birth_Death_Guider(PersHomologyBettiGuidance):
     def __init__(self, guider_config: BettiBirthDeathGuiderConfig):
         super().__init__(guider_config)
+
         self.num_classes = guider_config.num_classes
         self.downsampling = guider_config.downsampling
         self.downsampling_factor = tuple(guider_config.downsampling_factor)
@@ -237,3 +238,107 @@ class Birth_Death_Guider_Dim0(Birth_Death_Guider):
         )
 
         return cp.birth_death_pixels(0, start=0).to(device=device)
+
+
+class BirthDeathGuider(PersHomologyBettiGuidance):
+    def __init__(self, guider_config: BettiBirthDeathGuiderConfig):
+        super().__init__(guider_config)
+
+        self.num_classes = guider_config.num_classes
+        self.downsampling = guider_config.downsampling
+        self.downsampling_factor = tuple(guider_config.downsampling_factor)
+        self.downsampling_mode = guider_config.downsampling_mode
+
+        self.modifier = guider_config.modifier
+
+    def pseudo_gt(self, x_softmax: torch.Tensor, t: int, batch_idx: int):
+        intervals_0 = []
+        intervals_1 = []
+
+        for sample_idx in range(x_softmax.shape[0]):
+            sample_intervals_0 = []
+            sample_intervals_1 = []
+            for class_idx in range(x_softmax.shape[1]):
+                interval_0, interval_1 = self.get_intervals(
+                    x_softmax[sample_idx, class_idx],
+                )
+                sample_intervals_0.append(interval_0)
+                sample_intervals_1.append(interval_1)
+
+            intervals_0.append(sample_intervals_0)
+            intervals_1.append(sample_intervals_1)
+        return intervals_0, intervals_1
+
+    def get_intervals(self, class_probs: torch.Tensor):
+        device = class_probs.device
+        cp = CubicalPersistence(
+            class_probs.cpu(),
+            relative=False,
+            reduced=False,
+            filtration="superlevel",
+            construction="V",
+            birth_UF=False,
+        )
+
+        return cp.birth_death_pixels(0, start=0).to(
+            device=device
+        ), cp.birth_death_pixels(1, start=0).to(device=device)
+
+    def prepare_model_output(self, model_output: torch.Tensor):
+        if self.num_classes == 2 and model_output.shape[1] == 1:  # binary case
+            model_output = torch.sigmoid(model_output)
+        else:
+            model_output = max_min_normalization(model_output)
+            model_output = torch.softmax(model_output, dim=1)
+        return model_output
+
+    def guidance_loss(
+        self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
+    ):
+        if self.fixed_betti_numbers:
+            betti_0_batched = self.betti_0.unsqueeze(0).repeat(model_output.shape[0], 1)
+            betti_1_batched = self.betti_1.unsqueeze(0).repeat(model_output.shape[0], 1)
+        else:
+            betti_0_batched = kwargs["betti_0"]
+            betti_1_batched = kwargs["betti_1"]
+
+            if betti_0_batched is None:
+                raise ValueError("betti_0 must be provided")
+
+            if betti_1_batched is None:
+                raise ValueError("betti_1 must be provided")
+
+            if len(betti_0_batched.shape) == 1:
+                betti_0_batched = betti_0_batched.unsqueeze(
+                    1
+                )  # add dimension for class (for the binary case)
+
+            if len(betti_1_batched.shape) == 1:
+                betti_1_batched = betti_1_batched.unsqueeze(
+                    1
+                )  # add dimension for class (for the binary case)
+
+        assert betti_0_batched.shape[:2] == model_output.shape[:2]
+        assert betti_1_batched.shape[:2] == model_output.shape[:2]
+
+        if self.downsampling:
+            model_output = self.downsample_model_output(
+                model_output, self.downsampling_factor, self.downsampling_mode
+            )
+
+        x_softmax = self.prepare_model_output(model_output)
+
+        intervals_0, intervals_1 = self.pseudo_gt(
+            x_softmax.detach(),
+            t,
+            batch_idx,
+        )
+
+        loss = self.loss_fn(
+            x_softmax,
+            intervals_comp_0=intervals_0,
+            intervals_comp_1=intervals_1,
+            betti_0=betti_0_batched,
+            betti_1=betti_1_batched,
+        )
+        return loss

@@ -1,6 +1,7 @@
 from .betti.pershomology_guidance import (
     Birth_Death_Guider,
     Birth_Death_Guider_Dim0,
+    BirthDeathGuider,
     PersHomologyBettiGuidanceDim0_Comps,
 )
 from .betti.segbased_guidance import (
@@ -20,4 +21,5 @@ __all__ = [
     "Birth_Death_Guider",
     "LossGuider",
     "LossGuiderSegmenationCyclesDigits",
+    "BirthDeathGuider",
 ]
