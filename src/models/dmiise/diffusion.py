@@ -10,6 +10,8 @@ from tqdm import tqdm
 
 import wandb
 from guidance import LossGuider
+from loss import CustomLoss
+
 from metrics import MetricsHandler, MetricsInput
 from utils.helper import unpack_batch
 from utils.hydra_config import (
@@ -824,6 +826,23 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
             model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
         )
 
+        if diffusion_config.regularized_loss:
+            self.regularizer = True
+            self.regularized_loss = CustomLoss(diffusion_config.regularized_loss.reg_loss)
+            self.regularized_loss_gamma = diffusion_config.regularized_loss.gamma
+        else:
+            self.regularizer = False
+
+
+    def compute_regularized_loss(self, model_output: torch.Tensor, referenced_mask: torch.Tensor):
+        return self.regularized_loss(self.get_softmax_prediction(model_output), referenced_mask)
+        
+    def get_softmax_prediction(self, output: torch.Tensor, clamping: bool = False):
+        if clamping:
+            output = torch.clamp(output, -1, 1)
+        return torch.softmax(output, dim=1)
+
+
     @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
@@ -834,6 +853,7 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
 
         # Run the whole forward pass once to get the reference mask, all steps are unguided
         reference_mask = torch.rand_like(gt_train_masks, device=images.device)
+        reference_mask = self.get_softmax_prediction(reference_mask)
 
         for t in tqdm(self.scheduler.timesteps):
             reference_mask = self.unguided_step(reference_mask, images, t)
@@ -942,3 +962,124 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
             visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
 
         return 0
+    
+
+    @torch.inference_mode(False)
+    def only_guided_step(
+        self,
+        noisy_mask: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
+        t: int,
+        batch_idx: int,
+        gamma: float | None = None,
+        return_gradients: bool = False,
+    ):
+        noisy_mask = noisy_mask.requires_grad_(True)
+
+        loss = self.loss_guider.guidance_loss(
+            noisy_mask,
+            t,
+            batch_idx,
+            **topo_inputs,
+        )
+        print(f"guidance loss at timestep {t}: {loss}")
+
+        if self.regularizer:
+            reg_loss = self.compute_regularized_loss(noisy_mask, topo_inputs["reference_mask"])
+            loss += reg_loss * self.regularized_loss_gamma
+
+        self.metric_handler.update_loss(
+            {self.loss_guider.loss_name: loss.item()},
+            t,
+        )
+
+        print(f"total loss at timestep {t}: {loss}")
+
+        loss.backward()
+
+        with torch.no_grad():
+            noisy_mask_grads = noisy_mask.grad
+            new_noisy_mask = (
+                noisy_mask - (self.gamma if gamma is None else gamma) * noisy_mask_grads
+            )
+
+        if return_gradients:
+            return new_noisy_mask, noisy_mask_grads
+        else:
+            return new_noisy_mask
+        
+    @torch.inference_mode(False)
+    def guided_step(
+        self,
+        noisy_mask: torch.Tensor,
+        images: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
+        t: int,
+        batch_idx: int,
+        gamma: float | None = None,
+        return_gradients: bool = False,
+    ):
+        num_samples = images.shape[0]
+        noisy_mask = noisy_mask.requires_grad_(True)
+        model_output = self.model(
+            torch.cat((noisy_mask, images), dim=1),
+            torch.full((num_samples,), t, device=images.device),
+        )
+
+        loss = self.loss_guider.guidance_loss(
+            model_output,
+            t,
+            batch_idx,
+            **topo_inputs,
+        )
+        print(f"guidance loss at timestep {t}: {loss}")
+
+        if self.regularizer:
+            reg_loss = self.compute_regularized_loss(noisy_mask, topo_inputs["reference_mask"])
+            loss += reg_loss * self.regularized_loss_gamma
+
+        self.metric_handler.update_loss(
+            {self.loss_guider.loss_name: loss.item()},
+            t,
+        )
+
+        print(f"total loss at timestep {t}: {loss}")
+
+        loss.backward()
+
+        # for name, param in self.model.named_parameters():
+        #     if param.grad is not None:
+        #         grad_sum = param.grad.sum().item()  # Sum of gradients
+        #         # grad_size = param.grad.shape  # Size of gradient tensor
+        #         print(f"Parameter: {name}, Gradient Sum: {grad_sum}, Mean: {param.grad.mean().item()}")
+        #     else:
+        #         print(f"Parameter: {name} has no gradient and enabled grad: {param.requires_grad}")
+
+        with torch.no_grad():
+            noisy_mask_grads = noisy_mask.grad
+
+            new_noisy_mask = (
+                self.scheduler.step(
+                    model_output=model_output, timestep=t, sample=noisy_mask
+                ).prev_sample
+                - (self.gamma if gamma is None else gamma) * noisy_mask_grads
+            )
+
+            random_idx = int(num_samples / 2)
+            if self.visualize_gradients:
+                visualize_gradients(
+                    noisy_mask_grads[random_idx],
+                    t,
+                    batch_idx,
+                    random_idx,
+                    torch.clamp(model_output[random_idx], -1, 1),
+                    commit=(t == 1),
+                )
+
+        if return_gradients:
+            return new_noisy_mask, noisy_mask_grads
+
+        model_output = model_output.detach().cpu()
+        noisy_mask = noisy_mask.detach().cpu()
+
+        return new_noisy_mask

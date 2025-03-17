@@ -232,8 +232,14 @@ class LossGuidance3StepConfig(LossGuidanceConfig):
     last_step_unguided: bool
 
 
+class RegularizerConfig:
+    reg_loss: LossConfig
+    gamma: float
+    
+
 class LossGuidedDiffusionConfig(DiffusionConfig):
     loss_guidance: LossGuidanceConfig
+    regularized_loss: RegularizerConfig | None
 
 
 class MetricsHandlerConfig:
