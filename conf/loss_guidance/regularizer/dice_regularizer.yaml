@@ -1,0 +1,11 @@
+reg_loss:
+  loss_fns_config:
+  DiceCELoss:
+    scale: 1.0
+    args:
+      include_background: False
+      sigmoid: False
+      reduction: mean
+      softmax: True
+  log_loss_parts: False
+gamma: 0.1

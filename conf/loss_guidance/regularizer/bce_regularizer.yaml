@@ -1,0 +1,7 @@
+reg_loss:
+  loss_fns_config:
+  BCELoss:
+    scale: 1.0
+    args: null
+  log_loss_parts: False
+gamma: 0.1
