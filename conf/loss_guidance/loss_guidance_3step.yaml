@@ -1,5 +1,6 @@
 defaults:
   - guider: seg_comp
+  - regularizer: dice_regularizer
   - _self_
 
 gamma: 0.1

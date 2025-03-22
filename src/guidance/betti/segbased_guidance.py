@@ -4,6 +4,7 @@ from utils.helper import get_fixed_betti_numbers
 from utils.hydra_config import BettiSegmentationGuiderConfig
 
 from ..loss_guider_base import LossGuiderBetti
+from ..utils import max_min_normalization
 
 
 class SegBasedBettiGuidance(LossGuiderBetti):
@@ -327,7 +328,8 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
     def guidance_loss(
         self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
     ):
-        x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1).detach()
+        # x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1).detach()
+        x_softmax = max_min_normalization(model_output).detach()
 
         betti_0_batched, betti_1_batched = self.batched_betti(
             x_softmax.shape[0], **kwargs
@@ -339,7 +341,6 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
         pseudo_gt = self.pseudo_gt(
             x_softmax, t, batch_idx, betti_0_batched, betti_1_batched
         )
-
         loss = self.loss_fn(model_output, pseudo_gt)
         return loss
 

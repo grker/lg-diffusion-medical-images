@@ -11,7 +11,6 @@ from tqdm import tqdm
 import wandb
 from guidance import LossGuider
 from loss import CustomLoss
-
 from metrics import MetricsHandler, MetricsInput
 from utils.helper import unpack_batch
 from utils.hydra_config import (
@@ -140,10 +139,12 @@ class DDPM(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         self.model.train()
         self.log("learning rate", self.trainer.optimizers[0].param_groups[0]["lr"])
+
         images, gt_masks, gt_train_masks = unpack_batch(batch, "train")
         num_samples = images.shape[0]
 
         noise = torch.randn_like(gt_train_masks, device=gt_train_masks.device)
+        print(f"batch_idx: {batch_idx} has noise: {noise[0, 2, 70:73, 70:73]}")
         timesteps = torch.randint(
             0,
             self.scheduler.config.num_train_timesteps,
@@ -154,6 +155,11 @@ class DDPM(pl.LightningModule):
         noisy_image = self.scheduler.add_noise(gt_train_masks, noise, timesteps)
 
         prediction = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
+
+        pred_softmax = torch.softmax(prediction, dim=1)
+        print(f"pred_softmax max: {torch.max(pred_softmax)}")
+        print(f"pred_softmax min: {torch.min(pred_softmax)}")
+        print(f"pred_softmax hist: {torch.histc(pred_softmax, bins=10)}")
 
         loss = 0.0
         if self.prediction_type == "epsilon":
@@ -173,6 +179,11 @@ class DDPM(pl.LightningModule):
 
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
+
+        generator = torch.Generator(device=self.device)
+        seed = batch_idx * self.current_epoch
+        print(f"seed used: {seed}")
+        generator.manual_seed(seed)
 
         images, gt_masks, gt_train_masks, topo_inputs = unpack_batch(batch, "test")
         num_samples = images.shape[0]
@@ -199,7 +210,10 @@ class DDPM(pl.LightningModule):
                     )
 
                     noisy_mask = self.scheduler.step(
-                        model_output=model_output, timestep=t, sample=noisy_mask
+                        model_output=model_output,
+                        timestep=t,
+                        sample=noisy_mask,
+                        generator=generator,
                     ).prev_sample
 
                     if self.create_gif_over_timesteps:
@@ -216,6 +230,7 @@ class DDPM(pl.LightningModule):
                 )
 
             logits = self.mask_transformer.get_logits(torch.stack(ensemble_mask, dim=0))
+            print(f"some logits: {logits[0, 0, 2, 70:73, 70:73]}")
             seg_mask = self.mask_transformer.get_segmentation(logits)
             gt_masks = gt_masks.to(device=seg_mask.device)
 
@@ -381,6 +396,11 @@ class DDPM_DPS(DDPM):
     @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
+
+        generator = torch.Generator(device=self.device)
+        seed = batch_idx * self.current_epoch
+        print(f"seed: {seed}")
+        generator.manual_seed(seed)
 
         images, gt_masks, gt_train_masks, topo_inputs = unpack_batch(batch, "test")
         num_samples = images.shape[0]
@@ -551,6 +571,7 @@ class DDPM_DPS(DDPM):
         noisy_mask: torch.Tensor,
         images: torch.Tensor,
         t: int,
+        generator: torch.Generator | None = None,
     ):
         with torch.no_grad():
             num_samples = images.shape[0]
@@ -566,6 +587,7 @@ class DDPM_DPS(DDPM):
                 model_output=model_output,
                 timestep=t,
                 sample=noisy_mask,
+                generator=generator,
             ).prev_sample
 
         model_output = model_output.detach().cpu()
@@ -826,22 +848,26 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
             model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
         )
 
-        if diffusion_config.regularized_loss:
+        if diffusion_config.loss_guidance.regularizer:
             self.regularizer = True
-            self.regularized_loss = CustomLoss(diffusion_config.regularized_loss.reg_loss)
-            self.regularized_loss_gamma = diffusion_config.regularized_loss.gamma
+            self.regularized_loss = CustomLoss(
+                diffusion_config.loss_guidance.regularizer.reg_loss
+            )
+            self.regularized_loss_gamma = (
+                diffusion_config.loss_guidance.regularizer.gamma
+            )
         else:
             self.regularizer = False
 
+    def compute_regularized_loss(
+        self, model_output: torch.Tensor, referenced_mask: torch.Tensor
+    ):
+        return self.regularized_loss(model_output, referenced_mask)
 
-    def compute_regularized_loss(self, model_output: torch.Tensor, referenced_mask: torch.Tensor):
-        return self.regularized_loss(self.get_softmax_prediction(model_output), referenced_mask)
-        
     def get_softmax_prediction(self, output: torch.Tensor, clamping: bool = False):
         if clamping:
             output = torch.clamp(output, -1, 1)
         return torch.softmax(output, dim=1)
-
 
     @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
@@ -853,10 +879,17 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
 
         # Run the whole forward pass once to get the reference mask, all steps are unguided
         reference_mask = torch.rand_like(gt_train_masks, device=images.device)
-        reference_mask = self.get_softmax_prediction(reference_mask)
 
         for t in tqdm(self.scheduler.timesteps):
             reference_mask = self.unguided_step(reference_mask, images, t)
+
+        reference_mask = self.get_softmax_prediction(reference_mask, clamping=False)
+        reference_mask_argmax = torch.argmax(reference_mask, dim=1, keepdim=True)
+        reference_mask = torch.zeros_like(reference_mask).scatter_(
+            1, reference_mask_argmax, 1
+        )
+
+        # print(f"min and max of reference mask: {reference_mask.min()}, {reference_mask.max()}")
 
         # add the reference mask to the topo_inputs
         topo_inputs["reference_mask"] = reference_mask
@@ -923,11 +956,21 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
                 batch_idx,
                 **topo_inputs,
             )
+            loss = loss.view(1)
+            print(f"final guidance loss: {loss}")
+            if self.regularizer:
+                reg_loss = self.compute_regularized_loss(
+                    noisy_mask, topo_inputs["reference_mask"]
+                )
+                print(f"final regularized loss: {reg_loss}")
+                loss += reg_loss * self.regularized_loss_gamma
+
+            print(f"final total loss: {loss}")
+
             self.metric_handler.update_loss(
                 {self.loss_guider.loss_name: loss.item()},
                 0,
             )
-            print(f"final loss: {loss}")
 
             ensemble_mask.append(noisy_mask.detach().cpu())
             self.metric_handler.log_guidance_metrics()
@@ -962,7 +1005,6 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
             visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
 
         return 0
-    
 
     @torch.inference_mode(False)
     def only_guided_step(
@@ -985,7 +1027,9 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
         print(f"guidance loss at timestep {t}: {loss}")
 
         if self.regularizer:
-            reg_loss = self.compute_regularized_loss(noisy_mask, topo_inputs["reference_mask"])
+            reg_loss = self.compute_regularized_loss(
+                noisy_mask, topo_inputs["reference_mask"]
+            )
             loss += reg_loss * self.regularized_loss_gamma
 
         self.metric_handler.update_loss(
@@ -1007,7 +1051,7 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
             return new_noisy_mask, noisy_mask_grads
         else:
             return new_noisy_mask
-        
+
     @torch.inference_mode(False)
     def guided_step(
         self,
@@ -1032,10 +1076,14 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
             batch_idx,
             **topo_inputs,
         )
+        loss = loss.view(1)
         print(f"guidance loss at timestep {t}: {loss}")
 
         if self.regularizer:
-            reg_loss = self.compute_regularized_loss(noisy_mask, topo_inputs["reference_mask"])
+            reg_loss = self.compute_regularized_loss(
+                noisy_mask, topo_inputs["reference_mask"]
+            )
+            print(f"regularized loss at timestep {t}: {reg_loss}")
             loss += reg_loss * self.regularized_loss_gamma
 
         self.metric_handler.update_loss(
@@ -1083,3 +1131,15 @@ class DDPM_DPS_Regularized(DDPM_DPS_3Steps):
         noisy_mask = noisy_mask.detach().cpu()
 
         return new_noisy_mask
+
+
+def max_min_normalization(model_output: torch.Tensor):
+    """
+    params:
+        model_output: torch.Tensor, shape (batch_size, num_classes, height, width)
+    returns:
+        torch.Tensor, shape (batch_size, num_classes, height, width)
+    """
+    sample_min = torch.amin(model_output, dim=(1, 2, 3), keepdim=True)
+    sample_max = torch.amax(model_output, dim=(1, 2, 3), keepdim=True)
+    return (model_output - sample_min) / (sample_max - sample_min)

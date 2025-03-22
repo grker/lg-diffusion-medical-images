@@ -219,12 +219,18 @@ class Dim0_CompsScalerGuiderConfig(BettiPersHomologyGuiderConfig):
     scaling_function: LikelihoodTempScalingConfig
 
 
+class RegularizerConfig:
+    reg_loss: LossConfig
+    gamma: float
+
+
 class LossGuidanceConfig:
     gamma: float
     starting_step: int
     visualize_gradients: bool
     guidance_metrics: MetricsConfig
     guider: GuiderConfig
+    regularizer: RegularizerConfig | None
 
 
 class LossGuidance3StepConfig(LossGuidanceConfig):
@@ -232,14 +238,9 @@ class LossGuidance3StepConfig(LossGuidanceConfig):
     last_step_unguided: bool
 
 
-class RegularizerConfig:
-    reg_loss: LossConfig
-    gamma: float
-    
-
 class LossGuidedDiffusionConfig(DiffusionConfig):
     loss_guidance: LossGuidanceConfig
-    regularized_loss: RegularizerConfig | None
+    # regularized_loss: RegularizerConfig | None
 
 
 class MetricsHandlerConfig:

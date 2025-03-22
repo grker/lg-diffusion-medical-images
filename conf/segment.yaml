@@ -15,7 +15,7 @@ model_path: model/model.pth
 seed: 42
 validation_period: 10
 
-wandb_tags: null
+wandb_tags: [train]
 
 
 

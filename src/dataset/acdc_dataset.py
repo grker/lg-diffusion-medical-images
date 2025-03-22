@@ -31,16 +31,14 @@ class ACDCDataset(Dataset):
     topo_infos: list[str] = []
 
     def __init__(self, config: DatasetConfig):
-        print(f"data path: {config.data_path}")
-
         if config.data_path.startswith("../") and not os.path.exists(
             os.path.join(os.getcwd(), config.data_path)
         ):
             config.data_path = config.data_path[3:]
-            print(f"new data path: {config.data_path}")
 
-        self.training_folder = os.path.join(config.data_path, "training")
-        self.testing_folder = os.path.join(config.data_path, "testing")
+        data_path = os.path.join(os.getcwd(), config.data_path, "database")
+        self.training_folder = os.path.join(data_path, "training")
+        self.testing_folder = os.path.join(data_path, "testing")
 
         self.image_size = config.image_size
         self.normalize = config.normalize
@@ -72,10 +70,6 @@ class ACDCDataset(Dataset):
             torch.cat((training_gt, testing_gt), dim=0).unsqueeze(1)
         ).type(dtype=torch.float32)
         self.gt_train = self.mask_transformer.gt_to_train_mask(self.gt)
-
-        print(f"gt train shape: {self.gt_train.shape}")
-        print(f"data shape: {self.data.shape}")
-        print(f"histogram of gt train: {torch.histc(self.gt_train, bins=10)}")
 
     def load_patients(self, folder_path):
         data, gt = torch.empty(0), torch.empty(0)

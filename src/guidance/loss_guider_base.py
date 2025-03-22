@@ -42,7 +42,6 @@ class LossGuiderBetti(LossGuider):
 
         if guider_config.loss:
             loss_name = next(iter(guider_config.loss.loss_fns_config.keys()))
-            print(f"loss_name: {loss_name}")
 
             if self.check_loss_option(loss_name):
                 self.loss_fn = single_loss_fn(guider_config.loss)
