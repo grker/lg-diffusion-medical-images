@@ -357,7 +357,6 @@ class LossGuiderSegmenationCyclesDigits(LossGuiderSegmentationCycles):
     def guidance_loss(
         self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
     ):
-        print(f" key in kwargs: {kwargs.keys()}")
         betti_0, betti_1 = self.batched_betti(model_output.shape[0], **kwargs)
 
         assert betti_0.shape[:2] == model_output.shape[:2]

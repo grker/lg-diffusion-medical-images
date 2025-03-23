@@ -340,3 +340,6 @@ class BirthDeathGuider(PersHomologyBettiGuidance):
             mode=mode,
             align_corners=False,
         )
+
+class TopoLossGuider(PersHomologyBettiGuidance):
+    pass
