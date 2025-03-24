@@ -30,6 +30,14 @@ def main(config: SegmentationConfig):
     else:
         pl.seed_everything(config.seed)
 
+    # torch.use_deterministic_algorithms(True)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
+
+    # # CUDA-specific determinism (for cuBLAS and PyTorch)
+    # os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    # os.environ["PYTHONHASHSEED"] = "0"
+
     # wandb login and config
     wandb.login(key=os.environ["WANDB_API_KEY"])
 
@@ -106,6 +114,7 @@ def main(config: SegmentationConfig):
             devices=1,
             num_sanity_val_steps=1,
             val_check_interval=1.0,
+            precision=32,
         )
 
         trainer.fit(seg_model, train_loader, val_loader)

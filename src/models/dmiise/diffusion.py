@@ -144,7 +144,6 @@ class DDPM(pl.LightningModule):
         num_samples = images.shape[0]
 
         noise = torch.randn_like(gt_train_masks, device=gt_train_masks.device)
-        print(f"batch_idx: {batch_idx} has noise: {noise[0, 2, 70:73, 70:73]}")
         timesteps = torch.randint(
             0,
             self.scheduler.config.num_train_timesteps,
@@ -153,13 +152,7 @@ class DDPM(pl.LightningModule):
             dtype=torch.int64,
         )
         noisy_image = self.scheduler.add_noise(gt_train_masks, noise, timesteps)
-
         prediction = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
-
-        pred_softmax = torch.softmax(prediction, dim=1)
-        print(f"pred_softmax max: {torch.max(pred_softmax)}")
-        print(f"pred_softmax min: {torch.min(pred_softmax)}")
-        print(f"pred_softmax hist: {torch.histc(pred_softmax, bins=10)}")
 
         loss = 0.0
         if self.prediction_type == "epsilon":
@@ -229,7 +222,6 @@ class DDPM(pl.LightningModule):
                 )
 
             logits = self.mask_transformer.get_logits(torch.stack(ensemble_mask, dim=0))
-            print(f"some logits: {logits[0, 0, 2, 70:73, 70:73]}")
             seg_mask = self.mask_transformer.get_segmentation(logits)
             gt_masks = gt_masks.to(device=seg_mask.device)
 
@@ -333,9 +325,31 @@ class DDPM(pl.LightningModule):
             )
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=self.optimizer_config.lr
-        )
+        if "name" in self.optimizer_config.keys():
+            if self.optimizer_config.name == "sgd":
+                optimizer = torch.optim.SGD(
+                    self.model.parameters(),
+                    lr=self.optimizer_config.lr,
+                    weight_decay=self.optimizer_config.weight_decay,
+                )
+            elif self.optimizer_config.name == "adamw":
+                optimizer = torch.optim.AdamW(
+                    self.model.parameters(),
+                    lr=self.optimizer_config.lr,
+                    weight_decay=self.optimizer_config.weight_decay,
+                )
+            else:
+                optimizer = torch.optim.Adam(
+                    self.model.parameters(),
+                    lr=self.optimizer_config.lr,
+                    weight_decay=self.optimizer_config.weight_decay,
+                )
+        else:
+            optimizer = torch.optim.AdamW(
+                self.model.parameters(),
+                lr=self.optimizer_config.lr,
+                weight_decay=self.optimizer_config.weight_decay,
+            )
 
         if hasattr(torch.optim.lr_scheduler, self.optimizer_config.scheduler.name):
             args = (
@@ -355,6 +369,10 @@ class DDPM(pl.LightningModule):
 
 
 class DDPM_DPS_Regularized(DDPM):
+    loss_guider: LossGuider
+    starting_step: int
+    gamma: float
+
     def __init__(
         self,
         model: nn.Module,
@@ -375,7 +393,6 @@ class DDPM_DPS_Regularized(DDPM):
         self.visualize_gradients = diffusion_config.loss_guidance.visualize_gradients
         losses = [self.loss_guider.loss_name]
 
-
         self.set_mode(diffusion_config.loss_guidance)
 
         # set up the regularizer if exists
@@ -394,7 +411,6 @@ class DDPM_DPS_Regularized(DDPM):
 
         self.metric_handler.add_losses(losses)
 
-    
     def initialize_guider(self, guider_config: GuiderConfig):
         import guidance
 
@@ -403,7 +419,7 @@ class DDPM_DPS_Regularized(DDPM):
             return getattr(guidance, guider_config.name)(guider_config)
         else:
             raise ValueError(f"PseudoGTGenerator {guider_config.name} not found!")
-        
+
     def set_mode(self, loss_guidance_config: LossGuidance3StepConfig):
         self.mode = loss_guidance_config.mode
         self.last_step_unguided = loss_guidance_config.last_step_unguided
@@ -439,7 +455,6 @@ class DDPM_DPS_Regularized(DDPM):
                 1, reference_mask_argmax, 1
             )
 
-        
             # add the reference mask to the topo_inputs
             topo_inputs["reference_mask"] = reference_mask
 
@@ -460,11 +475,13 @@ class DDPM_DPS_Regularized(DDPM):
             noisy_mask = noisy_mask.requires_grad_(True)
 
             # guided steps
-            start_t = t-1
+            start_t = t - 1
             end_t = 1 if self.last_step_unguided else 0
 
             for t in range(start_t, end_t - 1, -1):
-                noisy_mask = self.guided_step(noisy_mask, images, topo_inputs, t, batch_idx)
+                noisy_mask = self.guided_step(
+                    noisy_mask, images, topo_inputs, t, batch_idx
+                )
                 self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, t)
 
             # deactivate the gradient for the model
@@ -476,10 +493,9 @@ class DDPM_DPS_Regularized(DDPM):
             if self.last_step_unguided:
                 noisy_mask = noisy_mask.requires_grad_(False)
                 noisy_mask = self.unguided_step(noisy_mask, images, 0)
-                
+
                 self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, 0)
 
-            
             # final loss:
             loss = self.loss_guider.guidance_loss(
                 noisy_mask,
@@ -490,7 +506,7 @@ class DDPM_DPS_Regularized(DDPM):
             loss = loss.view(1)
             print(f"final guidance loss: {loss}")
             loss_update = {self.loss_guider.loss_name: loss.item()}
-            
+
             if self.regularizer:
                 reg_loss = self.compute_regularized_loss(
                     noisy_mask, topo_inputs["reference_mask"]
@@ -539,9 +555,14 @@ class DDPM_DPS_Regularized(DDPM):
             visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
 
         return 0
-    
 
-    def guidance_metrics(self, noisy_mask: torch.Tensor, gt_masks: torch.Tensor, topo_inputs: dict[str, torch.Tensor], t: int):
+    def guidance_metrics(
+        self,
+        noisy_mask: torch.Tensor,
+        gt_masks: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
+        t: int,
+    ):
         inputs = MetricsInput(
             self.mask_transformer.get_segmentation(
                 self.mask_transformer.get_logits(noisy_mask.unsqueeze(0))
@@ -551,7 +572,6 @@ class DDPM_DPS_Regularized(DDPM):
         )
 
         self.metric_handler.update_guidance_metrics(inputs, t)
-
 
     @torch.inference_mode(False)
     def unguided_step(
@@ -578,7 +598,6 @@ class DDPM_DPS_Regularized(DDPM):
         model_output = model_output.detach().cpu()
         return noisy_mask
 
-    
     @torch.inference_mode(False)
     def guided_step(
         self,
@@ -641,16 +660,17 @@ class DDPM_DPS_Regularized(DDPM):
 
             if self.mode == "only_guided":
                 new_noisy_mask = (
-                noisy_mask - (self.gamma if gamma is None else gamma) * noisy_mask_grads
-            )
+                    noisy_mask
+                    - (self.gamma if gamma is None else gamma) * noisy_mask_grads
+                )
             elif self.mode == "dps_guidance":
                 new_noisy_mask = self.scheduler.step(
                     model_output=prediction, timestep=t, sample=noisy_mask
                 ).prev_sample
-                - (self.gamma if gamma is None else gamma) * noisy_mask_grads
+                -(self.gamma if gamma is None else gamma) * noisy_mask_grads
             else:
                 raise ValueError(f"Mode {self.mode} not supported!")
-            
+
             if self.visualize_gradients:
                 random_idx = int(images.shape[0] / 2)
                 visualize_gradients(
@@ -664,7 +684,7 @@ class DDPM_DPS_Regularized(DDPM):
 
         prediction = prediction.detach().cpu()
         noisy_mask = noisy_mask.detach().cpu()
-            
+
         if return_gradients:
             return new_noisy_mask, noisy_mask_grads
         else:

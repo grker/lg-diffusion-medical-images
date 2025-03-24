@@ -144,6 +144,7 @@ class SchedulerConfig:
 
 
 class OptimizerConfig:
+    name: str
     lr: float
     weight_decay: float
     scheduler: SchedulerConfig
