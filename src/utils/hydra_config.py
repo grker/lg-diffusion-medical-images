@@ -228,6 +228,7 @@ class RegularizerConfig:
 class LossGuidanceConfig:
     gamma: float
     starting_step: int
+    stop_step: int
     visualize_gradients: bool
     guidance_metrics: MetricsConfig
     guider: GuiderConfig

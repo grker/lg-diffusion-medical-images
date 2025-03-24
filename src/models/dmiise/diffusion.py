@@ -332,18 +332,21 @@ class DDPM(pl.LightningModule):
                     lr=self.optimizer_config.lr,
                     weight_decay=self.optimizer_config.weight_decay,
                 )
+                print("using the sgd optimizer")
             elif self.optimizer_config.name == "adamw":
                 optimizer = torch.optim.AdamW(
                     self.model.parameters(),
                     lr=self.optimizer_config.lr,
                     weight_decay=self.optimizer_config.weight_decay,
                 )
+                print("using the adamw optimizer")
             else:
                 optimizer = torch.optim.Adam(
                     self.model.parameters(),
                     lr=self.optimizer_config.lr,
                     weight_decay=self.optimizer_config.weight_decay,
                 )
+                print("using the adam optimizer")
         else:
             optimizer = torch.optim.AdamW(
                 self.model.parameters(),
@@ -371,6 +374,7 @@ class DDPM(pl.LightningModule):
 class DDPM_DPS_Regularized(DDPM):
     loss_guider: LossGuider
     starting_step: int
+    stop_step: int
     gamma: float
 
     def __init__(
@@ -388,9 +392,6 @@ class DDPM_DPS_Regularized(DDPM):
 
         # set up the loss guider
         self.loss_guider = self.initialize_guider(diffusion_config.loss_guidance.guider)
-        self.starting_step = diffusion_config.loss_guidance.starting_step
-        self.gamma = diffusion_config.loss_guidance.gamma
-        self.visualize_gradients = diffusion_config.loss_guidance.visualize_gradients
         losses = [self.loss_guider.loss_name]
 
         self.set_mode(diffusion_config.loss_guidance)
@@ -422,7 +423,21 @@ class DDPM_DPS_Regularized(DDPM):
 
     def set_mode(self, loss_guidance_config: LossGuidance3StepConfig):
         self.mode = loss_guidance_config.mode
-        self.last_step_unguided = loss_guidance_config.last_step_unguided
+        self.gamma = loss_guidance_config.gamma
+        self.visualize_gradients = loss_guidance_config.visualize_gradients
+
+        self.starting_step = loss_guidance_config.starting_step
+        self.stop_step = loss_guidance_config.stop_step
+
+        assert self.stop_step <= self.starting_step and self.stop_step >= 0, (
+            "Starting step must be larger than or equal to stop step"
+        )
+
+        if self.stop_step == 0:
+            self.stop_step = 1
+            self.no_switch = True
+        else:
+            self.no_switch = False
 
     def compute_regularized_loss(
         self, model_output: torch.Tensor, referenced_mask: torch.Tensor
@@ -475,52 +490,54 @@ class DDPM_DPS_Regularized(DDPM):
             noisy_mask = noisy_mask.requires_grad_(True)
 
             # guided steps
-            start_t = t - 1
-            end_t = 1 if self.last_step_unguided else 0
-
-            for t in range(start_t, end_t - 1, -1):
+            for t in self.scheduler.timesteps[-self.starting_step : -self.stop_step]:
                 noisy_mask = self.guided_step(
                     noisy_mask, images, topo_inputs, t, batch_idx
                 )
                 self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, t)
 
-            # deactivate the gradient for the model
-            for name, param in self.model.named_parameters():
-                if param.requires_grad:
-                    param.requires_grad_(False)
-
-            # final unguided step if needed
-            if self.last_step_unguided:
-                noisy_mask = noisy_mask.requires_grad_(False)
-                noisy_mask = self.unguided_step(noisy_mask, images, 0)
-
+            if self.no_switch:
+                noisy_mask = self.guided_step(
+                    noisy_mask, images, topo_inputs, 0, batch_idx
+                )
                 self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, 0)
 
-            # final loss:
-            loss = self.loss_guider.guidance_loss(
-                noisy_mask,
-                0,
-                batch_idx,
-                **topo_inputs,
-            )
-            loss = loss.view(1)
-            print(f"final guidance loss: {loss}")
-            loss_update = {self.loss_guider.loss_name: loss.item()}
+                # deactivate the gradient for the model
+                for name, param in self.model.named_parameters():
+                    if param.requires_grad:
+                        param.requires_grad_(False)
 
-            if self.regularizer:
-                reg_loss = self.compute_regularized_loss(
-                    noisy_mask, topo_inputs["reference_mask"]
-                )
-                print(f"final regularized loss: {reg_loss}")
-                loss += reg_loss * self.regularized_loss_gamma
-                loss_update[self.regularized_loss_name] = reg_loss.item()
+            else:
+                # again unguided steps
+                for t in self.scheduler.timesteps[-self.stop_step :]:
+                    noisy_mask = noisy_mask.requires_grad_(False)
+                    noisy_mask = self.unguided_step(noisy_mask, images, t)
 
-            print(f"final total loss: {loss}")
+                    self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, t)
 
-            self.metric_handler.update_loss(
-                {self.loss_guider.loss_name: loss.item()},
-                0,
-            )
+                # final loss:
+                # loss = self.loss_guider.guidance_loss(
+                #     noisy_mask,
+                #     0,
+                #     batch_idx,
+                #     **topo_inputs,
+                # )
+                # loss = loss.view(1)
+                # print(f"final guidance loss: {loss}")
+                # loss_update = {self.loss_guider.loss_name: loss.item()}
+
+                # if self.regularizer:
+                #     reg_loss = self.compute_regularized_loss(noisy_mask, topo_inputs["reference_mask"])
+                #     print(f"final regularized loss: {reg_loss}")
+                #     loss += reg_loss * self.regularized_loss_gamma
+                #     loss_update[self.regularized_loss_name] = reg_loss.item()
+
+                # print(f"final total loss: {loss}")
+
+                # self.metric_handler.update_loss(
+                #     {self.loss_guider.loss_name: loss.item()},
+                #     0,
+                # )
 
             ensemble_mask.append(noisy_mask.detach().cpu())
             self.metric_handler.log_guidance_metrics()
@@ -629,7 +646,7 @@ class DDPM_DPS_Regularized(DDPM):
             **topo_inputs,
         )
         guidance_loss = guidance_loss.view(1)
-        print(f"guidance loss at timestep {t}: {guidance_loss}")
+        print(f"\nguidance loss at timestep {t}: {guidance_loss.item()}")
 
         loss_update = {self.loss_guider.loss_name: guidance_loss.item()}
 
@@ -637,14 +654,14 @@ class DDPM_DPS_Regularized(DDPM):
             reg_loss = self.compute_regularized_loss(
                 noisy_mask, topo_inputs["reference_mask"]
             )
-            print(f"regularized loss at timestep {t}: {reg_loss}")
+            print(f"regularized loss at timestep {t}: {reg_loss.item()}")
 
             loss = guidance_loss + reg_loss * self.regularized_loss_gamma
             loss_update[self.regularized_loss_name] = reg_loss.item()
         else:
             loss = guidance_loss
 
-        print(f"total loss at timestep {t}: {loss}")
+        print(f"total loss at timestep {t}: {loss.item()}")
 
         # update the loss for the metric handler
         self.metric_handler.update_loss(
