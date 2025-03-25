@@ -7,4 +7,4 @@ gamma: 0.1
 starting_step: 10
 visualize_gradients: False
 mode: only_guided
-stop_step: 0
+stop_step: 1

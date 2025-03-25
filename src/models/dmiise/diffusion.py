@@ -331,6 +331,7 @@ class DDPM(pl.LightningModule):
                     self.model.parameters(),
                     lr=self.optimizer_config.lr,
                     weight_decay=self.optimizer_config.weight_decay,
+                    momentum=0.0,
                 )
                 print("using the sgd optimizer")
             elif self.optimizer_config.name == "adamw":
@@ -402,9 +403,8 @@ class DDPM_DPS_Regularized(DDPM):
             self.regularized_loss = CustomLoss(
                 diffusion_config.loss_guidance.regularizer.reg_loss
             )
-            self.regularized_loss_gamma = (
-                diffusion_config.loss_guidance.regularizer.gamma
-            )
+            self.scalar_reg_loss = diffusion_config.loss_guidance.regularizer.gamma
+            self.scalar_guidance_loss = diffusion_config.loss_guidance.regularizer.beta
             self.regularized_loss_name = "Regularized Loss"
             losses.append(self.regularized_loss_name)
         else:
@@ -529,7 +529,7 @@ class DDPM_DPS_Regularized(DDPM):
                 # if self.regularizer:
                 #     reg_loss = self.compute_regularized_loss(noisy_mask, topo_inputs["reference_mask"])
                 #     print(f"final regularized loss: {reg_loss}")
-                #     loss += reg_loss * self.regularized_loss_gamma
+                #     loss += reg_loss * self.scalar_reg_loss
                 #     loss_update[self.regularized_loss_name] = reg_loss.item()
 
                 # print(f"final total loss: {loss}")
@@ -568,6 +568,7 @@ class DDPM_DPS_Regularized(DDPM):
             self.num_classes,
             [index],
         )
+
         if reps > 1:
             visualize_mean_variance(ensemble_mask, phase, batch_idx, index_list=[index])
 
@@ -631,7 +632,7 @@ class DDPM_DPS_Regularized(DDPM):
 
         if self.mode == "only_guided":
             prediction = noisy_mask
-        elif self.mode == "dps_guidance":
+        elif self.mode == "dps_guidance" or self.mode == "dps_only_reg":
             prediction = self.model(
                 torch.cat((noisy_mask, images), dim=1),
                 torch.full((images.shape[0],), t, device=images.device),
@@ -639,24 +640,28 @@ class DDPM_DPS_Regularized(DDPM):
         else:
             raise ValueError(f"Mode {self.mode} not supported!")
 
-        guidance_loss = self.loss_guider.guidance_loss(
-            prediction,
-            t,
-            batch_idx,
-            **topo_inputs,
-        )
-        guidance_loss = guidance_loss.view(1)
-        print(f"\nguidance loss at timestep {t}: {guidance_loss.item()}")
+        loss_update = {}
+        loss = 0.0
+        if self.mode != "dps_only_reg":
+            guidance_loss = self.loss_guider.guidance_loss(
+                prediction,
+                t,
+                batch_idx,
+                **topo_inputs,
+            )
+            guidance_loss = guidance_loss.view(1)
+            print(f"\nguidance loss at timestep {t}: {guidance_loss.item()}")
 
-        loss_update = {self.loss_guider.loss_name: guidance_loss.item()}
+            loss += self.scalar_guidance_loss * guidance_loss
+            loss_update = {self.loss_guider.loss_name: guidance_loss.item()}
 
         if self.regularizer:
             reg_loss = self.compute_regularized_loss(
-                noisy_mask, topo_inputs["reference_mask"]
+                prediction, topo_inputs["reference_mask"]
             )
             print(f"regularized loss at timestep {t}: {reg_loss.item()}")
 
-            loss = guidance_loss + reg_loss * self.regularized_loss_gamma
+            loss += reg_loss * self.scalar_reg_loss
             loss_update[self.regularized_loss_name] = reg_loss.item()
         else:
             loss = guidance_loss
@@ -680,11 +685,14 @@ class DDPM_DPS_Regularized(DDPM):
                     noisy_mask
                     - (self.gamma if gamma is None else gamma) * noisy_mask_grads
                 )
-            elif self.mode == "dps_guidance":
-                new_noisy_mask = self.scheduler.step(
+            elif self.mode == "dps_guidance" or self.mode == "dps_only_reg":
+                noisy_mask = self.scheduler.step(
                     model_output=prediction, timestep=t, sample=noisy_mask
                 ).prev_sample
-                -(self.gamma if gamma is None else gamma) * noisy_mask_grads
+                new_noisy_mask = (
+                    noisy_mask
+                    - (self.gamma if gamma is None else gamma) * noisy_mask_grads
+                )
             else:
                 raise ValueError(f"Mode {self.mode} not supported!")
 

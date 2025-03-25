@@ -223,6 +223,8 @@ class Dim0_CompsScalerGuiderConfig(BettiPersHomologyGuiderConfig):
 class RegularizerConfig:
     reg_loss: LossConfig
     gamma: float
+    beta: float
+    repeated_mode: bool
 
 
 class LossGuidanceConfig:
