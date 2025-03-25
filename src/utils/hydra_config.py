@@ -224,7 +224,9 @@ class RegularizerConfig:
     reg_loss: LossConfig
     gamma: float
     beta: float
-    repeated_mode: bool
+    repeated: bool
+    repeated_mode: str
+    average_ensemble: str
 
 
 class LossGuidanceConfig:

@@ -406,6 +406,10 @@ class DDPM_DPS_Regularized(DDPM):
             self.scalar_reg_loss = diffusion_config.loss_guidance.regularizer.gamma
             self.scalar_guidance_loss = diffusion_config.loss_guidance.regularizer.beta
             self.regularized_loss_name = "Regularized Loss"
+            self.repeated = diffusion_config.loss_guidance.regularizer.repeated
+            self.repeated_mode = diffusion_config.loss_guidance.regularizer.repeated_mode
+            self.average_ensemble = diffusion_config.loss_guidance.regularizer.average_ensemble
+
             losses.append(self.regularized_loss_name)
         else:
             self.regularizer = False
@@ -448,6 +452,18 @@ class DDPM_DPS_Regularized(DDPM):
         if clamping:
             output = torch.clamp(output, -1, 1)
         return torch.softmax(output, dim=1)
+    
+    def prepare_reference_mask(self, reference_mask: torch.Tensor, mode: str="segmentation"):
+        if mode in ["segmentation", "softmax"]:
+            reference_mask = self.get_softmax_prediction(reference_mask, clamping=False)
+
+            if mode == "segmentation":
+                reference_mask_argmax = torch.argmax(reference_mask, dim=1, keepdim=True)
+                reference_mask = torch.zeros_like(reference_mask).scatter_(
+                    1, reference_mask_argmax, 1
+                )
+
+        return reference_mask
 
     @torch.inference_mode(False)
     def val_test_step(self, batch, batch_idx, phase):
@@ -464,14 +480,8 @@ class DDPM_DPS_Regularized(DDPM):
             for t in tqdm(self.scheduler.timesteps):
                 reference_mask = self.unguided_step(reference_mask, images, t)
 
-            reference_mask = self.get_softmax_prediction(reference_mask, clamping=False)
-            reference_mask_argmax = torch.argmax(reference_mask, dim=1, keepdim=True)
-            reference_mask = torch.zeros_like(reference_mask).scatter_(
-                1, reference_mask_argmax, 1
-            )
-
             # add the reference mask to the topo_inputs
-            topo_inputs["reference_mask"] = reference_mask
+            topo_inputs["reference_mask"] = self.prepare_reference_mask(reference_mask, self.repeated_mode)
 
         ensemble_mask = []
         # run the actual guided forward pass
@@ -540,14 +550,21 @@ class DDPM_DPS_Regularized(DDPM):
                 # )
 
             ensemble_mask.append(noisy_mask.detach().cpu())
+
+            if self.repeated:
+                topo_inputs["reference_mask"] = self.prepare_reference_mask(noisy_mask, self.repeated_mode)
+    
             self.metric_handler.log_guidance_metrics()
 
+        
+        ensemble_mask = torch.stack(ensemble_mask, dim=0)
+        if self.repeated and self.final_mask == "last":
+            ensemble_mask = ensemble_mask[-1].unsqueeze(0)
+
         logits = self.mask_transformer.get_logits(
-            torch.stack(
-                ensemble_mask,
-                dim=0,
-            )
+            ensemble_mask
         )
+        
         seg_mask = self.mask_transformer.get_segmentation(logits)
         gt_masks = gt_masks.to(device=seg_mask.device)
 
