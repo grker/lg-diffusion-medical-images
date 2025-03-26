@@ -130,6 +130,10 @@ class LossConfig:
     log_loss_parts: bool
 
 
+class RegLossConfig(LossConfig):
+    mode_for_reference_mask: str
+
+
 class Metric:
     kwargs: dict
 
@@ -225,8 +229,8 @@ class RegularizerConfig:
     gamma: float
     beta: float
     repeated: bool
-    repeated_mode: str
     average_ensemble: str
+    mode_for_reference_mask: str
 
 
 class LossGuidanceConfig:
