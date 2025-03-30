@@ -1,13 +1,15 @@
+import random
+
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 from omegaconf import open_dict
 
+from metrics import MetricsHandler, MetricsInput
 from models.base_segmentation import BaseSegmentation
 from utils.helper import unpack_batch
 from utils.hydra_config import SegmentationConfig
 from utils.mask_transformer import BaseMaskMapping
-from utils.metrics import compute_and_log_metrics
 from utils.visualize import visualize_segmentation
 
 
@@ -78,7 +80,7 @@ class UnetSegmentation(BaseSegmentation):
 
 class UnetSegmentationModel(pl.LightningModule):
     model: nn.Module
-    metrics: dict
+    metrics: MetricsHandler
     loss_fn: torch.nn.Module
     mask_transformer: BaseMaskMapping
     num_classes: int
@@ -92,7 +94,7 @@ class UnetSegmentationModel(pl.LightningModule):
     ):
         super(UnetSegmentationModel, self).__init__()
         self.model = model
-        self.metrics = metrics
+        self.metric_handler = metrics
         self.loss_fn = loss
         self.mask_transformer = mask_transformer
         self.num_classes = mask_transformer.get_num_classes()
@@ -101,7 +103,7 @@ class UnetSegmentationModel(pl.LightningModule):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
-        images, masks, training_mask = unpack_batch(batch)
+        images, masks, training_mask = unpack_batch(batch, "train")
         pred_masks = self.model(images)
 
         loss = self.loss_fn(pred_masks, training_mask)
@@ -109,15 +111,19 @@ class UnetSegmentationModel(pl.LightningModule):
         return loss
 
     def val_test_step(self, batch, batch_idx, phase):
-        images, gt_masks, _ = unpack_batch(batch)
-        pred_masks = self.model(images)
+        images, gt_masks, _, topo_inputs = unpack_batch(batch, "test")
+        num_samples = images.shape[0]
 
+        pred_masks = self.model(images)
         pred_masks = pred_masks.unsqueeze(0)
         logits = self.mask_transformer.get_logits(pred_masks)
         # seg_mask, one_hot_seg_mask = self.mask_transformer.get_segmentation(logits)
         seg_mask = self.mask_transformer.get_segmentation(logits)
 
-        compute_and_log_metrics(self.metrics, seg_mask, gt_masks, phase, self.log)
+        metrics_input = MetricsInput(seg_mask, gt_masks, topo_inputs)
+        self.metric_handler.compute_metrics(metrics_input, phase, self.log)
+
+        index = random.randint(0, num_samples - 1)
         visualize_segmentation(
             images,
             gt_masks,
@@ -127,6 +133,7 @@ class UnetSegmentationModel(pl.LightningModule):
             self.mask_transformer.gt_mapping_for_visualization(),
             batch_idx,
             self.num_classes,
+            [index],
         )
 
         return 0

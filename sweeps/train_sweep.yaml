@@ -1,0 +1,49 @@
+project: difseg
+program: src/main.py
+name: train_acdc_sweep
+method: grid
+metric:
+  goal: minimize
+  name: test_betti_number_0
+
+parameters:
+  # standart settings
+  validation_period:
+    values: [50]
+  trainer.max_epochs:
+    values: [600]
+  dataloader.val_batch_size:
+    values: [256]
+  diffusion:
+    values: [sample_diffusion]
+  dataset:
+    values: [acdc]
+  diffusion.repetitions_test:
+    values: [1]
+  model.name:
+    values: [basic_unet]
+  metrics:
+    values: [metrics_handler_multi]
+  loss:
+    values: [x_0_pred_loss]
+  dataset.data_path:
+    values: [data/ACDC]
+  optimizer:
+    values: [optimizer_ema]
+
+  # adaptable parameters
+  dataloader.batch_size:
+    values: [32, 64, 128]
+  optimizer.lr:
+    values: [0.001, 0.0005]
+  optimizer.weight_decay:
+    values: [1e-6, 1e-8]
+
+
+
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args_no_hyphens}

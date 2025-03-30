@@ -1,0 +1,10 @@
+reg_loss:
+    loss_fns_config:
+        KLDivLoss:
+            scale: 1.0
+            args: null
+    log_loss_parts: False
+weighting: 0.5
+repeated: False
+average_ensemble: last
+mode_for_reference_mask: softmax

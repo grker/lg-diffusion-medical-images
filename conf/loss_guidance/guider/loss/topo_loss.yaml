@@ -1,0 +1,8 @@
+loss_fns_config:
+  TopoLoss:
+    scale: 1.0
+    args:
+      alpha: 0.5
+      average: sample_class
+      sublevel: False
+log_loss_parts: False

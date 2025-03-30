@@ -1,28 +1,30 @@
 project: difseg
 program: src/loss_guidance.py
-name: loss_guidance_reg_cycle_acdc_new_version
+name: loss_guidance_only_reg_stop_20
 method: grid
 metric:
   goal: minimize
   name: test_betti_number_0
 
 parameters:
-  loss_guidance/regularizer:
-    values: [donky_kong_regularizer, dice_regularizer]
   run_id:
     values: [4icxcjql]
+  loss_guidance.regularizer.beta:
+    values: [0]
+  loss_guidance.stop_step:
+    values: [20]
   loss_guidance.starting_step:
-    values: [10, 30, 50, 90]
+    values: [30, 50, 90]
   loss_guidance.gamma:
     values: [1000, 1500, 2000]
   loss_guidance.guider.name:
     values: [LossGuiderSegmentationCycles]
-  loss_guidance.regularizer.weighting:
-    values: [0.0, 0.2, 0.5, 0.8, 1.0]
+  loss_guidance.regularizer.gamma:
+    values: [0.1, 1, 10, 50, 100]
   test_batch_size:
     values: [16]
   loss_guidance.mode:
-    values: [dps_guidance]
+    values: [dps_only_reg]
 
 
 command:

@@ -1,6 +1,27 @@
+from copy import deepcopy
+
 import omegaconf
 import torch
 from omegaconf import OmegaConf
+
+
+class EMA:
+    def __init__(self, alpha: float = 0.9):
+        self.alpha = alpha
+        self.model_state_dict = None
+
+    def update(self, model: torch.nn.Module):
+        new_state_dict = deepcopy(model.state_dict())
+        if self.model_state_dict is None:
+            self.model_state_dict = new_state_dict
+        else:
+            for key in self.model_state_dict.keys():
+                self.model_state_dict[key] = (
+                    self.model_state_dict[key] * (1 - self.alpha)
+                    + new_state_dict[key] * self.alpha
+                )
+
+            model.load_state_dict(self.model_state_dict)
 
 
 def create_wandb_tags(config: omegaconf.DictConfig):

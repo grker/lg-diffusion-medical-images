@@ -147,11 +147,16 @@ class SchedulerConfig:
     args: dict
 
 
+class EMAConfig:
+    alpha: float
+
+
 class OptimizerConfig:
     name: str
     lr: float
     weight_decay: float
     scheduler: SchedulerConfig
+    ema: EMAConfig | None
 
 
 # Configs for the loss guidance
@@ -226,8 +231,9 @@ class Dim0_CompsScalerGuiderConfig(BettiPersHomologyGuiderConfig):
 
 class RegularizerConfig:
     reg_loss: LossConfig
-    gamma: float
-    beta: float
+    weighting: (
+        float  # defines the weighting of the regularization loss and the guidance loss
+    )
     repeated: bool
     average_ensemble: str
     mode_for_reference_mask: str

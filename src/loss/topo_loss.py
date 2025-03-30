@@ -29,14 +29,23 @@ class TopoLoss(torch.nn.Module):
     It sums the lengths of the components and cycles of the persistence diagram, while ignoring the largest ones.
     """
 
-    def __init__(self, size, alpha, average="sample_class", sublevel=False):
+    def __init__(self, alpha, average="sample_class", sublevel=False, size=None):
         super().__init__()
 
-        self.persistence_layer = LevelSetLayer2D(size=size, sublevel=sublevel)
+        if size is None:
+            self.persistence_layer = None
+        else:
+            self.set_up_persistence_layer(size, sublevel)
+
         self.comp_lengths = PartialSumBarcodeLengthsFlexibleSkip(dim=0)
         self.cycle_lengths = PartialSumBarcodeLengthsFlexibleSkip(dim=1)
+        self.sublevel = sublevel
         self.alpha = alpha
         self.average = average
+
+    def set_up_persistence_layer(self, size):
+        if self.persistence_layer is None:
+            self.persistence_layer = LevelSetLayer2D(size=size, sublevel=self.sublevel)
 
     def forward(
         self, prediction: torch.Tensor, betti_0: torch.Tensor, betti_1: torch.Tensor
@@ -59,9 +68,11 @@ class TopoLoss(torch.nn.Module):
                 comp_loss += self.comp_lengths(
                     interval_info, betti_0[sample_idx, class_idx]
                 )
+                print(f"comp_loss: {comp_loss}")
                 cycle_loss += self.cycle_lengths(
                     interval_info, betti_1[sample_idx, class_idx]
                 )
+                print(f"cycle_loss: {cycle_loss}")
 
         if self.average == "sample_class":
             comp_loss /= prediction.shape[0] * prediction.shape[1]

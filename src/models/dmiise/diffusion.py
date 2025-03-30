@@ -12,7 +12,7 @@ import wandb
 from guidance import LossGuider
 from loss import CustomLoss
 from metrics import MetricsHandler, MetricsInput
-from utils.helper import unpack_batch
+from utils.helper import EMA, unpack_batch
 from utils.hydra_config import (
     DiffusionConfig,
     GuiderConfig,
@@ -89,6 +89,12 @@ class DDPM(pl.LightningModule):
         self.num_classes = mask_transformer.get_num_classes()
 
         self.loss_fn = loss
+
+    def create_ema(self, optimizer_config: OptimizerConfig):
+        if "ema" in optimizer_config.keys() and optimizer_config.ema is not None:
+            self.ema = EMA(**optimizer_config.ema)
+        else:
+            self.ema = EMA(1)
 
     def noise_tester(self, dataset: Dataset, batch_size: int, device="cuda"):
         samples = len(dataset)
@@ -403,14 +409,15 @@ class DDPM_DPS_Regularized(DDPM):
             self.regularized_loss = CustomLoss(
                 diffusion_config.loss_guidance.regularizer.reg_loss
             )
-            self.scalar_reg_loss = diffusion_config.loss_guidance.regularizer.gamma
-            self.scalar_guidance_loss = diffusion_config.loss_guidance.regularizer.beta
+            self.weighting = diffusion_config.loss_guidance.regularizer.weighting
             self.regularized_loss_name = "Regularized Loss"
             self.repeated = diffusion_config.loss_guidance.regularizer.repeated
             self.average_ensemble = (
                 diffusion_config.loss_guidance.regularizer.average_ensemble
             )
-            self.mode_for_reference_mask = diffusion_config.loss_guidance.regularizer.reg_loss.mode_for_reference_mask
+            self.mode_for_reference_mask = (
+                diffusion_config.loss_guidance.regularizer.mode_for_reference_mask
+            )
 
             losses.append(self.regularized_loss_name)
         else:
@@ -681,7 +688,7 @@ class DDPM_DPS_Regularized(DDPM):
             guidance_loss = guidance_loss.view(1)
             print(f"\nguidance loss at timestep {t}: {guidance_loss.item()}")
 
-            loss += self.scalar_guidance_loss * guidance_loss
+            loss += guidance_loss
             loss_update = {self.loss_guider.loss_name: guidance_loss.item()}
 
         if self.regularizer:
@@ -690,7 +697,7 @@ class DDPM_DPS_Regularized(DDPM):
             )
             print(f"regularized loss at timestep {t}: {reg_loss.item()}")
 
-            loss += reg_loss * self.scalar_reg_loss
+            loss = self.weighting * loss + (1 - self.weighting) * reg_loss
             loss_update[self.regularized_loss_name] = reg_loss.item()
         else:
             loss = guidance_loss
@@ -708,6 +715,11 @@ class DDPM_DPS_Regularized(DDPM):
 
         with torch.no_grad():
             noisy_mask_grads = noisy_mask.grad
+
+            print(f"noisy_mask_grads max: {noisy_mask_grads.max()}")
+            print(f"noisy_mask_grads min: {noisy_mask_grads.min()}")
+
+            print(f"mean of noisy_mask_grads: {noisy_mask_grads.mean()}")
 
             if self.mode == "only_guided":
                 new_noisy_mask = (

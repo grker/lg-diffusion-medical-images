@@ -4,8 +4,7 @@ reg_loss:
     scale: 1.0
     args: null
   log_loss_parts: False
-gamma: 0.1
-beta: 0.9
+weighting: 0.5
 repeated: False
 average_ensemble: last
 mode_for_reference_mask: softmax

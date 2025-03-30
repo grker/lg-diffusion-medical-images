@@ -1,0 +1,10 @@
+defaults:
+  - guider: seg_comp
+  - regularizer: null
+  - _self_
+
+gamma: 0
+starting_step: 1 # starting step and stop step need to be the same
+stop_step: 1
+mode: only_guided
+visualize_gradients: False

@@ -1,0 +1,9 @@
+name: adamw
+lr: 0.001
+weight_decay: 0.0000001
+scheduler:
+  name: ExponentialLR
+  args:
+    gamma: 0.99
+ema:
+  alpha: 0.99
