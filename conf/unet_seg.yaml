@@ -5,7 +5,7 @@ defaults:
   - diffusion: base_diffusion
   - trainer: base_trainer
   - loss: x_0_pred_loss
-  - metrics: base_metrics
+  - metrics: metrics_handler_multi
   - optimizer: base_optimizer
   - _self_
 
