@@ -112,7 +112,7 @@ def main(config: SegmentationConfig):
             logger=wandb_logger,
             accelerator=config.trainer.accelerator,
             devices=1,
-            num_sanity_val_steps=1,
+            num_sanity_val_steps=0,
             val_check_interval=1.0,
             precision=32,
         )

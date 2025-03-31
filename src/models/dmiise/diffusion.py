@@ -179,6 +179,18 @@ class DDPM(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         return self.val_test_step(batch, batch_idx, "test")
 
+    def get_model_output(
+        self, noisy_mask: torch.Tensor, images: torch.Tensor, timestep: int
+    ):
+        num_samples = images.shape[0]
+
+        model_output = self.model(
+            torch.cat((noisy_mask, images), dim=1),
+            torch.full((num_samples,), timestep, device=images.device),
+        )
+
+        return model_output
+
     def val_test_step(self, batch, batch_idx, phase):
         self.model.eval()
 
@@ -205,10 +217,7 @@ class DDPM(pl.LightningModule):
             for rep in range(reps):
                 noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
                 for t in tqdm(self.scheduler.timesteps):
-                    model_output = self.model(
-                        torch.cat((noisy_mask, images), dim=1),
-                        torch.full((num_samples,), t, device=images.device),
-                    )
+                    model_output = self.get_model_output(noisy_mask, images, t)
 
                     noisy_mask = self.scheduler.step(
                         model_output=model_output,

@@ -4,6 +4,7 @@ from torch import nn
 
 from metrics import MetricsHandler
 from models.dmiise.diffusion import DDPM
+from utils.helper import unpack_batch
 from utils.hydra_config import DiffusionConfig, OptimizerConfig
 from utils.mask_transformer import BaseMaskMapping
 
@@ -29,6 +30,15 @@ class ScoreBasedDiffusion(DDPM):
             model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
         )
 
+        if diffusion_config.num_inference_steps is None:
+            self.inference_timesteps = diffusion_config.noise_steps
+
+            print(f"inference steps: {self.inference_timesteps}")
+        else:
+            self.inference_timesteps = diffusion_config.num_inference_steps
+
+            print(f"inference steps not null: {self.inference_timesteps}")
+
     def create_scheduler(self, diffusion_config: DiffusionConfig):
         return EulerDiscreteScheduler(
             num_train_timesteps=diffusion_config.noise_steps,
@@ -42,14 +52,16 @@ class ScoreBasedDiffusion(DDPM):
         self, timesteps: torch.Tensor, dimensions: int
     ):
         shape = [-1] + [1] * (dimensions - 1)
-        return torch.sqrt(1.0 - self.scheduler.alphas_cumprod[timesteps]).view(*shape)
+        return torch.sqrt(
+            1.0 - self.scheduler.alphas_cumprod.to(timesteps.device)[timesteps]
+        ).view(*shape)
 
     def training_step(self, batch, batch_idx):
         self.model.train()
         self.log("learning rate", self.trainer.optimizers[0].param_groups[0]["lr"])
-        images, gt_masks, gt_train_masks = self.unpack_batch(batch, "train")
+        images, gt_masks, gt_train_masks = unpack_batch(batch, "train")
 
-        noise = torch.randn_like(gt_masks)
+        noise = torch.randn_like(gt_train_masks, device=gt_train_masks.device)
         timesteps = torch.full(
             (gt_masks.shape[0],), self.scheduler.config.num_train_timesteps - 1
         ).to(gt_masks.device)
@@ -64,14 +76,32 @@ class ScoreBasedDiffusion(DDPM):
 
         loss = 0.0
         if self.prediction_type == "epsilon":
-            variance = self.get_sqrt_one_minus_alpha_cumprod(timesteps)
+            variance = self.get_sqrt_one_minus_alpha_cumprod(
+                timesteps, len(noise.shape)
+            )
             loss = self.loss_fn(model_output, -noise / variance)
 
         self.log("train_loss", loss)
 
         return loss
 
+    def get_model_output(
+        self, noisy_mask: torch.Tensor, images: torch.Tensor, timestep: int
+    ):
+        num_samples = images.shape[0]
+
+        noisy_mask = self.scheduler.scale_model_input(noisy_mask, timestep)
+
+        model_output = self.model(
+            torch.cat((noisy_mask, images), dim=1),
+            torch.full((num_samples,), timestep, device=images.device),
+        )
+
+        return model_output
+
     def val_test_step(self, batch, batch_idx, phase):
+        self.scheduler.set_timesteps(self.inference_timesteps)
+
         super().val_test_step(batch, batch_idx, phase)
         # self.model.eval()
 

@@ -6,7 +6,7 @@
 #SBATCH --time=08:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=1
+#SBATCH --gpus=A100:1
 
 USERNAME=$USER
 PROJECT_NAME=master_thesis
@@ -74,3 +74,6 @@ mkdir -p ${WANDB_CACHE_DIR}
 
 python src/main.py project_name=dmiise diffusion=score_based_diffusion diffusion.noise_steps=100 validation_period=20 trainer.max_epochs=300 dataloader.batch_size=64 dataloader.val_batch_size=128 dataset=acdc diffusion.repetitions=1 diffusion.repetitions_test=1 model.name=basic_unet metrics=metrics_handler_multi loss=mse_loss dataset.data_path=data/ACDC optimizer=optimizer_ema
 # python main.py trainer.max_epochs=100 dataloader.batch_size=64 dataloader.val_batch_size=64 dataset/mask_transformer=acdc_multi
+
+
+# python src/main.py project_name=dmiise diffusion=sample_diffusion diffusion.noise_steps=100 validation_period=20 trainer.max_epochs=300 dataloader.batch_size=64 dataloader.val_batch_size=128 dataset=bccd diffusion.repetitions=1 diffusion.repetitions_test=1 model.name=basic_unet metrics=metrics_handler_binary_guidance loss=x_0_pred_loss_binary dataset.data_path=data/BCCD optimizer=optimizer_ema

@@ -1,6 +1,5 @@
 from .acdc_dataset import ACDCDataset
+from .bcdc import BCCDDataset
 from .mnist import M2NISTDataset, MNISTLabelDataset
 
-from .bcdc import BCDCDataset
-
-__all__ = ["ACDCDataset", "M2NISTDataset", "MNISTLabelDataset", "BCDCDataset"]
+__all__ = ["ACDCDataset", "M2NISTDataset", "MNISTLabelDataset", "BCCDDataset"]

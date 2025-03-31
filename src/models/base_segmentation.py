@@ -77,6 +77,10 @@ class BaseSegmentation:
             from dataset import MNISTLabelDataset
 
             return MNISTLabelDataset(config)
+        elif config.name == "bccd":
+            from dataset import BCCDDataset
+
+            return BCCDDataset(config)
         else:
             raise NotImplementedError(f"Dataset {config.name} not implemented")
 

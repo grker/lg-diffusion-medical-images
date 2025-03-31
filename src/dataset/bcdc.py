@@ -8,7 +8,7 @@ from utils.hydra_config import DatasetConfig
 from utils.mask_transformer import BaseMaskMapping, generate_mask_mapping
 
 
-class BCDCDataset(Dataset):
+class BCCDDataset(Dataset):
     training_folder: str
     testing_folder: str
 
@@ -19,7 +19,7 @@ class BCDCDataset(Dataset):
 
     mask_transformer: BaseMaskMapping
 
-    topo_infos: list[str] = ["components"]
+    topo_infos: list[str] = ["betti_0"]
 
     def __init__(self, config: DatasetConfig):
         self.training_folder = os.path.join(os.getcwd(), config.data_path, "training")
@@ -57,7 +57,6 @@ class BCDCDataset(Dataset):
         print(f"gt_train shape: {self.gt_train.shape}")
         print(f"components shape: {self.components.shape}")
 
-
         print(f"images min: {self.images.min()}")
         print(f"images max: {self.images.max()}")
 
@@ -66,7 +65,13 @@ class BCDCDataset(Dataset):
 
         print(f"gt_train min: {self.gt_train.min()}")
         print(f"gt_train max: {self.gt_train.max()}")
-        
+
+        print(f"type of images: {self.images.type()}")
+        print(f"type of gt: {self.gt.type()}")
+        print(f"type of gt_train: {self.gt_train.type()}")
+        print(f"type of components: {self.components.type()}")
+
+        self.images = self.images.to(torch.float32)
 
     def load_partition(self, folder_path: str):
         images = torch.from_numpy(np.load(os.path.join(folder_path, "images.npy")))
@@ -82,6 +87,14 @@ class BCDCDataset(Dataset):
 
     def __len__(self):
         return self.images.shape[0]
+
+    def __getitem__(self, idx):
+        return (
+            self.images[idx],
+            self.gt[idx],
+            self.gt_train[idx],
+            {"betti_0": self.components[idx]},
+        )
 
     def get_image_size(self):
         return self.images.shape[1:]
