@@ -61,14 +61,7 @@ class DDPM(pl.LightningModule):
         print("Creating DDPM model")
 
         self.create_gif_over_timesteps = False
-        self.scheduler = DDPMScheduler(
-            num_train_timesteps=diffusion_config.noise_steps,
-            beta_start=diffusion_config.beta_start,
-            beta_end=diffusion_config.beta_end,
-            beta_schedule=diffusion_config.scheduler_type,
-            prediction_type=diffusion_config.prediction_type,
-            clip_sample_range=diffusion_config.clip_range,
-        )
+        self.scheduler = self.create_scheduler(diffusion_config)
 
         if (
             diffusion_config.num_inference_steps is None
@@ -89,6 +82,16 @@ class DDPM(pl.LightningModule):
         self.num_classes = mask_transformer.get_num_classes()
 
         self.loss_fn = loss
+
+    def create_scheduler(self, diffusion_config: DiffusionConfig):
+        return DDPMScheduler(
+            num_train_timesteps=diffusion_config.noise_steps,
+            beta_start=diffusion_config.beta_start,
+            beta_end=diffusion_config.beta_end,
+            beta_schedule=diffusion_config.scheduler_type,
+            prediction_type=diffusion_config.prediction_type,
+            clip_sample_range=diffusion_config.clip_range,
+        )
 
     def create_ema(self, optimizer_config: OptimizerConfig):
         if "ema" in optimizer_config.keys() and optimizer_config.ema is not None:

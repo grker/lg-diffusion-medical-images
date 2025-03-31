@@ -1,4 +1,4 @@
-diffusion_type: ddpm
+diffusion_type: score_based
 noise_steps: 100
 beta_start: 1e-4
 beta_end: 0.02
@@ -8,6 +8,6 @@ var_learned: False
 repetitions: 1
 repetitions_test: 1
 threshold: 0.5
-prediction_type: sample
+prediction_type: epsilon
 num_inference_steps: null
 clip_range: 1

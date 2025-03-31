@@ -2,7 +2,7 @@ defaults:
   - pseudo_gt_generator: base_generator
   - _self_
 
-diffusion_mechanism: dps_ddpm
+diffusion_type: ddpm
 noise_steps: 100
 beta_start: 1e-4
 beta_end: 0.02

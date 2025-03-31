@@ -69,6 +69,6 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 
-python src/loss_guidance.py run_id=gi8nl3xd loss_guidance=loss_guidance_3step loss_guidance/guider=topo_guider_binary loss_guidance.guider.name=TopoGuider loss_guidance.starting_step=30 loss_guidance.stop_step=1 loss_guidance.gamma=1 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_binary_guidance loss_guidance.regularizer.weighting=0.5 loss_guidance/regularizer=donky_kong_regularizer
+python src/loss_guidance.py run_id=4icxcjql loss_guidance=loss_guidance_3step loss_guidance/guider=topo_guider_multi loss_guidance.guider.name=TopoGuider loss_guidance.starting_step=30 loss_guidance.stop_step=1 loss_guidance.gamma=0.1 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_multi loss_guidance.regularizer.weighting=1 loss_guidance/regularizer=dice_regularizer
 
 # python src/loss_guidance.py run_id=4icxcjql loss_guidance=no_guidance test_batch_size=16  metrics=metrics_handler_multi repetitions='[1, 5, 10, 15]'

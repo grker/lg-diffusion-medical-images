@@ -43,6 +43,7 @@ class MaskTransformerConfig(ModelConfig):
 
 
 class DiffusionConfig:
+    diffusion_type: str
     noise_steps: int
     beta_start: float
     beta_end: float

@@ -1,3 +1,4 @@
+diffusion_type: ddpm
 noise_steps: 1000
 beta_start: 1e-4
 beta_end: 0.02

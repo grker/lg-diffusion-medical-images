@@ -2,10 +2,11 @@ import pytorch_lightning as pl
 from omegaconf import open_dict
 
 from models.base_segmentation import BaseSegmentation
-from models.dmiise.diffusion import (  # ,DDPM_DPS, DDPM_DPS_3Steps
+from models.dmiise.diffusion import (
     DDPM,
     DDPM_DPS_Regularized,
 )
+from models.dmiise.score_based_diffusion import ScoreBasedDiffusion
 from utils.hydra_config import SegmentationConfig
 from utils.mask_transformer import BaseMaskMapping
 
@@ -121,6 +122,12 @@ class DmiiseSegmentation(BaseSegmentation):
     def lightning_module(self):
         if self.loss_guided:
             return DDPM_DPS_Regularized
+        diffusion_config = self.config.diffusion
+
+        if "diffusion_type" in diffusion_config.keys():
+            if diffusion_config["diffusion_type"] == "score_based":
+                return ScoreBasedDiffusion
+            elif diffusion_config["diffusion_type"] == "ddpm":
+                return DDPM
         else:
-            print("creating DDPM model")
-            return DDPM
+            return DDPM  # this is to support older configs which do not have the diffusion_type attribute
