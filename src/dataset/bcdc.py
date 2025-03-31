@@ -44,6 +44,10 @@ class BCDCDataset(Dataset):
         )
 
         self.images = torch.cat((training_images, testing_images), dim=0)
+
+        if self.normalize:
+            self.images = self.images / 255.0
+
         self.gt = torch.cat((training_gt, testing_gt), dim=0)
         self.gt_train = torch.cat((training_gt_train, testing_gt_train), dim=0)
         self.components = torch.cat((training_components, testing_components), dim=0)
@@ -52,6 +56,17 @@ class BCDCDataset(Dataset):
         print(f"gt shape: {self.gt.shape}")
         print(f"gt_train shape: {self.gt_train.shape}")
         print(f"components shape: {self.components.shape}")
+
+
+        print(f"images min: {self.images.min()}")
+        print(f"images max: {self.images.max()}")
+
+        print(f"gt min: {self.gt.min()}")
+        print(f"gt max: {self.gt.max()}")
+
+        print(f"gt_train min: {self.gt_train.min()}")
+        print(f"gt_train max: {self.gt_train.max()}")
+        
 
     def load_partition(self, folder_path: str):
         images = torch.from_numpy(np.load(os.path.join(folder_path, "images.npy")))
@@ -62,12 +77,6 @@ class BCDCDataset(Dataset):
 
         gt = self.mask_transformer.dataset_to_gt_mask(masks.type(torch.float32))
         gt_train = self.mask_transformer.gt_to_train_mask(gt)
-
-        print(f"max in gt_train: {gt_train.max()}")
-        print(f"min in gt_train: {gt_train.min()}")
-
-        print(f"max in images: {images.max()}")
-        print(f"min in images: {images.min()}")
 
         return images, gt, gt_train, components
 
