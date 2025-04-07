@@ -74,6 +74,7 @@ def main(config: LossGuidanceInferenceConfig):
 
     # add the loss guidance config to the diffusion config
     print(f"new config: {config}")
+    print(f"old config: {old_config}")
     old_config.diffusion.loss_guidance = config.loss_guidance
     old_config.loss_guidance = config.loss_guidance
     old_config.dataloader.val_batch_size = config.test_batch_size

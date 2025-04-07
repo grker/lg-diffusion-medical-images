@@ -88,6 +88,11 @@ def clean_nan_scores_and_avg(scores: torch.Tensor):
     return scores[nan_indices].mean().item()
 
 
+def clean_nan_scores_and_sum(scores: torch.Tensor):
+    nan_indices = torch.nonzero(~torch.isnan(scores), as_tuple=True)[0]
+    return scores[nan_indices].sum().item()
+
+
 class MetricsInput:
     seg_mask: torch.Tensor
     gt: torch.Tensor
@@ -126,8 +131,17 @@ class GuidanceMetric:
         self.timesteps = [i for i in range(timesteps)]
 
         self.metric_values_per_timestep = {}
-        for name in self.metrics_dict.keys():
-            self.metric_values_per_timestep[name] = [initial_value] * timesteps
+        for name, metric_fn in self.metrics_dict.items():
+            if (
+                hasattr(metric_fn, "logging_names")
+                and metric_fn.logging_names is not None
+            ):
+                for logging_name in metric_fn.logging_names:
+                    self.metric_values_per_timestep[logging_name] = [
+                        initial_value
+                    ] * timesteps
+            else:
+                self.metric_values_per_timestep[name] = [initial_value] * timesteps
 
         self.topo_metric_values_per_timestep = {}
         for name in self.topo_metrics_dict.keys():
@@ -147,7 +161,6 @@ class GuidanceMetric:
             self.losses_per_timestep[name] = [0.0] * len(self.timesteps)
 
     def update(self, inputs: MetricsInput, timestep: int):
-        print(f"update metrics: {self.topo_metric_values_per_timestep}")
         prediction = inputs.seg_mask
         gt = inputs.gt
 
@@ -156,9 +169,23 @@ class GuidanceMetric:
         for name, metric_fn in self.metrics_dict.items():
             try:
                 metric_value = metric_fn(prediction, gt)
-                self.metric_values_per_timestep[name][timestep] += torch.sum(
-                    metric_value
-                ).item()
+
+                if (
+                    hasattr(metric_fn, "logging_names")
+                    and metric_fn.logging_names is not None
+                ):
+                    assert len(metric_fn.logging_names) == len(metric_value), (
+                        "Number of logging names must match number of scores"
+                    )
+
+                    for i, logging_name in enumerate(metric_fn.logging_names):
+                        self.metric_values_per_timestep[logging_name][timestep] += (
+                            clean_nan_scores_and_sum(metric_value[i])
+                        )
+                else:
+                    self.metric_values_per_timestep[name][timestep] += (
+                        clean_nan_scores_and_sum(metric_value)
+                    )
             except Exception as e:
                 print(f"{name} cannot be computed. Received Error: {str(e)}")
 
@@ -172,7 +199,6 @@ class GuidanceMetric:
                     kwargs[input_name] = inputs.topo_inputs[input_name]
 
                     metric_value = metric_fn(prediction, **kwargs)
-                    print(f"metric value computed: {metric_value}")
                     self.topo_metric_values_per_timestep[name][timestep] += torch.sum(
                         metric_value
                     ).item()
@@ -191,16 +217,31 @@ class GuidanceMetric:
 
     def compute(self):
         metric_values = {}
-        for name in self.metrics_dict.keys():
-            metric_values[name] = [
-                (
-                    self.metric_values_per_timestep[name][timestep]
-                    / self.total_samples[timestep]
-                    if self.total_samples[timestep] > 0
-                    else 0
-                )
-                for timestep in self.timesteps
-            ]
+        for name, metric_fn in self.metrics_dict.items():
+            if (
+                hasattr(metric_fn, "logging_names")
+                and metric_fn.logging_names is not None
+            ):
+                for logging_name in metric_fn.logging_names:
+                    metric_values[logging_name] = [
+                        (
+                            self.metric_values_per_timestep[logging_name][timestep]
+                            / self.total_samples[timestep]
+                            if self.total_samples[timestep] > 0
+                            else 0
+                        )
+                        for timestep in self.timesteps
+                    ]
+            else:
+                metric_values[name] = [
+                    (
+                        self.metric_values_per_timestep[name][timestep]
+                        / self.total_samples[timestep]
+                        if self.total_samples[timestep] > 0
+                        else 0
+                    )
+                    for timestep in self.timesteps
+                ]
 
         for name in self.topo_metric_values_per_timestep.keys():
             metric_values[name] = [
@@ -228,10 +269,22 @@ class GuidanceMetric:
 
     def log_to_wandb(self):
         computed_values = self.compute()
-        for name in self.metrics_dict.keys():
-            data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
-            table = wandb.Table(data=data, columns=["timestep", name])
-            wandb.log({f"{name}_metric_per_timestep": table})
+        for name, metric_fn in self.metrics_dict.items():
+            if (
+                hasattr(metric_fn, "logging_names")
+                and metric_fn.logging_names is not None
+            ):
+                for logging_name in metric_fn.logging_names:
+                    data = [
+                        [x, y]
+                        for (x, y) in zip(self.timesteps, computed_values[logging_name])
+                    ]
+                    table = wandb.Table(data=data, columns=["timestep", logging_name])
+                    wandb.log({f"{logging_name}_metric_per_timestep": table})
+            else:
+                data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
+                table = wandb.Table(data=data, columns=["timestep", name])
+                wandb.log({f"{name}_metric_per_timestep": table})
 
         for name in self.topo_metrics_dict.keys():
             data = [[x, y] for (x, y) in zip(self.timesteps, computed_values[name])]
@@ -255,6 +308,9 @@ class MetricsHandler:
         self.standard_metrics, self.guided_metrics = generate_metrics_fn(
             config.standard_metrics
         )
+
+        print(f"guided metrics: {self.guided_metrics}")
+
         self.topo_metrics, self.guided_topo_metrics = generate_topo_metrics_fn(
             config.topo_metrics, dataset_provided_topo_infos
         )

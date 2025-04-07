@@ -1,6 +1,6 @@
 project: difseg
 program: src/loss_guidance.py
-name: topo_guider_sweep
+name: recreation_old_sweep_4icxcjql_cycle
 method: grid
 metric:
   goal: minimize
@@ -8,19 +8,21 @@ metric:
 
 parameters:
   loss_guidance/guider:
-    values: [topo_guider_multi]
+    values: [seg_comp]
   loss_guidance/regularizer:
     values: [dice_regularizer]
   run_id:
     values: [4icxcjql]
+  loss_guidance.stop_step:
+    values: [1]
   loss_guidance.starting_step:
-    values: [10, 20, 30]
+    values: [30, 35, 40]
   loss_guidance.gamma:
-    values: [0.05, 0.1, 0.5, 1]
+    values: [500, 1000, 1500]
   loss_guidance.guider.name:
-    values: [TopoGuider]
+    values: [LossGuiderSegmentationCycles]
   loss_guidance.regularizer.weighting:
-    values: [0.5, 1.0]
+    values: [0.0, 0.5, 1.0]
   test_batch_size:
     values: [16]
   loss_guidance.mode:

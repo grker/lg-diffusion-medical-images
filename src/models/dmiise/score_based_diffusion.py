@@ -103,30 +103,3 @@ class ScoreBasedDiffusion(DDPM):
         self.scheduler.set_timesteps(self.inference_timesteps)
 
         super().val_test_step(batch, batch_idx, phase)
-        # self.model.eval()
-
-        # generator = torch.Generator(device=self.device)
-        # seed = batch_idx * self.current_epoch
-        # generator.manual_seed(seed)
-
-        # images, gt_masks, gt_train_masks, topo_inputs = self.unpack_batch(batch, "test")
-        # num_samples = images.shape[0]
-
-        # reps = self.repetitions_test if phase == "test" else self.repetitions
-
-        # with torch.no_grad():
-        #     ensemble_mask = []
-        #     for rep in range(reps):
-        #         noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
-        #         for t in tqdm(self.scheduler.timesteps):
-        #             model_output = self.model(
-        #                 torch.cat((noisy_mask, images), dim=1),
-        #                 torch.full((num_samples,), t, device=images.device),
-        #             )
-
-        #             noisy_mask = self.scheduler.step(
-        #                 model_output=model_output,
-        #                 timestep=t,
-        #                 sample=noisy_mask,
-        #                 generator=generator,
-        #             )

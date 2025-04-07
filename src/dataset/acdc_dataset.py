@@ -36,7 +36,11 @@ class ACDCDataset(Dataset):
         ):
             config.data_path = config.data_path[3:]
 
-        data_path = os.path.join(os.getcwd(), config.data_path, "database")
+        if not config.data_path.endswith("database"):
+            data_path = os.path.join(os.getcwd(), config.data_path, "database")
+        else:
+            data_path = config.data_path
+
         self.training_folder = os.path.join(data_path, "training")
         self.testing_folder = os.path.join(data_path, "testing")
 

@@ -69,7 +69,7 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 
-SWEEP_ID=nzk9fv7k
+SWEEP_ID=y9dqtdvp
 
 wandb agent difseg/difseg/${SWEEP_ID}
 

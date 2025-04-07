@@ -35,7 +35,7 @@ def create_wandb_tags(config: omegaconf.DictConfig):
         "multiclass" if config.dataset.mask_transformer.multiclass else "binary",
     ]
 
-    if config.project_name == "dmiise":
+    if config.project_name == "dmiise" and "diffusion_type" in config.diffusion.keys():
         wandb_tags.append(config.diffusion.diffusion_type)
 
     wandb_tags = base_tags + wandb_tags

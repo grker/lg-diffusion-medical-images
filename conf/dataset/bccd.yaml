@@ -2,9 +2,8 @@ defaults:
   - mask_transformer: mnist_binary
   - _self_
 
-name: m2nist
-data_path: data/M2NIST
+name: bccd
+data_path: ../data/BCCD
 image_size: null
 normalize: True
-mode: bilinear
-multiclass: False
+mode: null
