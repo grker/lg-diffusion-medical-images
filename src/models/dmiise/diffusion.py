@@ -721,6 +721,8 @@ class DDPM_DPS_Regularized(DDPM):
         else:
             raise ValueError(f"Mode {self.mode} not supported!")
 
+        prediction.retain_grad()
+
         loss_update = {}
         loss = 0.0
         if self.mode != "dps_only_reg":
@@ -837,10 +839,12 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
         topo_inputs: dict[str, torch.Tensor],
         t: int,
         batch_idx: int,
-        gamma: float,
-        return_gradients: bool,
+        gamma: float | None = None,
+        return_gradients: bool = False,
     ):
         prediction = None
+
+        noisy_mask = noisy_mask.requires_grad_(True)
 
         if self.mode == "only_guided":
             prediction = noisy_mask
@@ -852,9 +856,14 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
         else:
             raise ValueError(f"Mode {self.mode} not supported!")
 
+        # for name, param in self.model.named_parameters():
+        #     if param.grad is not None:
+        #         print(name, param.grad.shape)
+
         print(f"prediction has grad: {prediction.requires_grad}")
 
         for step_rep in range(self.reps_per_guided_step):
+            print(f"iterating over reps {step_rep}")
             loss_update = {}
             loss = 0.0
 
@@ -891,9 +900,12 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
                 t,
             )
 
+            prediction.retain_grad()
+
             loss.backward()
 
             with torch.no_grad():
+                print(f"prediciton grads: {prediction.grad}")
                 prediction_grads = (
                     self.gamma if gamma is None else gamma
                 ) * prediction.grad
@@ -901,11 +913,25 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
                 print(f"prediction_grads max: {prediction_grads.max()}")
                 print(f"prediction_grads min: {prediction_grads.min()}")
 
-                prediction = prediction - prediction_grads
+                prediction = prediction - prediction_grads.detach()
+                prediction = prediction.detach()
 
-            if self.mode != "only_guided":
-                noisy_mask = self.sampling_scheduler.step(
-                    model_output=prediction, timestep=t, sample=noisy_mask
-                ).prev_sample
+                print(f"prediction has grad after: {prediction.requires_grad}")
+                prediction = prediction.requires_grad_(True)
 
-        return noisy_mask
+                print(f"prediction has grad after: {prediction.requires_grad}")
+
+            print(f"prediction has grad: {prediction.requires_grad}")
+            prediction = prediction.requires_grad_(True)
+
+            print(f"prediction has grad after: {prediction.requires_grad}")
+
+        if self.mode != "only_guided":
+            noisy_mask = self.sampling_scheduler.step(
+                model_output=prediction, timestep=t, sample=noisy_mask
+            ).prev_sample
+
+        if return_gradients:
+            return noisy_mask, prediction_grads
+        else:
+            return noisy_mask

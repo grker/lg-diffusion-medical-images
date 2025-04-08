@@ -18,7 +18,7 @@ from utils.hydra_config import SegmentationConfig
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="segment",
+    config_name="auto_encoder",
 )
 def main(config: SegmentationConfig):
     logging.getLogger("pytorch_lightning").setLevel(

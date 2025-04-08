@@ -26,6 +26,11 @@ def create_segmentor(config: SegmentationConfig, **kwargs: dict):
         from models.unet_segmentation.unet_seg_model import UnetSegmentation
 
         return UnetSegmentation(config)
+
+    elif project_name == "autoencoder":
+        from models.auto_encoder.autoencoder import AutoEncoder
+
+        return AutoEncoder(config)
     else:
         raise NotImplementedError(f"Segmentation model {project_name} not implemented")
 
