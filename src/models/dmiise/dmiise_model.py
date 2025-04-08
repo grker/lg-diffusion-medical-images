@@ -5,8 +5,10 @@ from models.base_segmentation import BaseSegmentation
 from models.dmiise.diffusion import (
     DDPM,
     DDPM_DPS_Regularized,
+    DDPM_DPS_Regularized_Repeated,
 )
-from models.dmiise.score_based_diffusion import ScoreBasedDiffusion
+
+# from models.dmiise.score_based_diffusion import ScoreBasedDiffusion
 from utils.hydra_config import SegmentationConfig
 from utils.mask_transformer import BaseMaskMapping
 
@@ -121,13 +123,25 @@ class DmiiseSegmentation(BaseSegmentation):
 
     def lightning_module(self):
         if self.loss_guided:
-            return DDPM_DPS_Regularized
-        diffusion_config = self.config.diffusion
+            if hasattr(self.config.diffusion.loss_guidance, "type"):
+                if self.config.diffusion.loss_guidance.type == "dps":
+                    return DDPM_DPS_Regularized
+                elif self.config.diffusion.loss_guidance.type == "repeated":
+                    return DDPM_DPS_Regularized_Repeated
+                else:
+                    raise ValueError(
+                        f"Loss guidance type {self.config.diffusion.loss_guidance.type} not supported!"
+                    )
+            else:
+                return DDPM_DPS_Regularized
 
-        if "diffusion_type" in diffusion_config.keys():
-            if diffusion_config["diffusion_type"] == "score_based":
-                return ScoreBasedDiffusion
-            elif diffusion_config["diffusion_type"] == "ddpm":
-                return DDPM
         else:
-            return DDPM  # this is to support older configs which do not have the diffusion_type attribute
+            return DDPM
+
+        # if "diffusion_type" in diffusion_config.keys():
+        #     if diffusion_config["diffusion_type"] == "score_based":
+        #         return ScoreBasedDiffusion
+        #     elif diffusion_config["diffusion_type"] == "ddpm":
+        #         return DDPM
+        # else:
+        #     return DDPM  # this is to support older configs which do not have the diffusion_type attribute

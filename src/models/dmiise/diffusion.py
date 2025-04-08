@@ -744,8 +744,6 @@ class DDPM_DPS_Regularized(DDPM):
 
             loss = self.weighting * loss + (1 - self.weighting) * reg_loss
             loss_update[self.regularized_loss_name] = reg_loss.item()
-        else:
-            loss = guidance_loss
 
         print(f"total loss at timestep {t}: {loss.item()}")
 
@@ -805,3 +803,109 @@ def max_min_normalization(model_output: torch.Tensor):
     sample_min = torch.amin(model_output, dim=(1, 2, 3), keepdim=True)
     sample_max = torch.amax(model_output, dim=(1, 2, 3), keepdim=True)
     return (model_output - sample_min) / (sample_max - sample_min)
+
+
+class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
+    def __init__(
+        self,
+        model: nn.Module,
+        diffusion_config: LossGuidedDiffusionConfig,
+        optimizer_config: OptimizerConfig,
+        metrics: dict,
+        mask_transformer: BaseMaskMapping,
+        loss: torch.nn.Module,
+    ):
+        if "reps_per_guided_step" in diffusion_config.loss_guidance.keys():
+            self.reps_per_guided_step = (
+                diffusion_config.loss_guidance.reps_per_guided_step
+            )
+        else:
+            self.reps_per_guided_step = 1
+
+        super().__init__(
+            model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
+        )
+
+    def val_test_step(self, batch, batch_idx, phase):
+        return super().val_test_step(batch, batch_idx, phase)
+
+    @torch.inference_mode(False)
+    def guided_step(
+        self,
+        noisy_mask: torch.Tensor,
+        images: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
+        t: int,
+        batch_idx: int,
+        gamma: float,
+        return_gradients: bool,
+    ):
+        prediction = None
+
+        if self.mode == "only_guided":
+            prediction = noisy_mask
+        elif self.mode == "dps_guidance" or self.mode == "dps_only_reg":
+            prediction = self.model(
+                torch.cat((noisy_mask, images), dim=1),
+                torch.full((images.shape[0],), t, device=images.device),
+            )
+        else:
+            raise ValueError(f"Mode {self.mode} not supported!")
+
+        print(f"prediction has grad: {prediction.requires_grad}")
+
+        for step_rep in range(self.reps_per_guided_step):
+            loss_update = {}
+            loss = 0.0
+
+            if self.mode != "dps_only_reg":
+                guidance_loss = self.loss_guider.guidance_loss(
+                    prediction,
+                    t,
+                    batch_idx,
+                    **topo_inputs,
+                )
+                guidance_loss = guidance_loss.view(1)
+                print(
+                    f"\nguidance loss at timestep {t} and rep {step_rep}: {guidance_loss.item()}"
+                )
+
+                loss += guidance_loss
+                loss_update = {self.loss_guider.loss_name: guidance_loss.item()}
+
+            if self.regularizer:
+                reg_loss = self.compute_regularized_loss(
+                    prediction, topo_inputs["reference_mask"]
+                )
+                print(
+                    f"regularized loss at timestep {t} and rep {step_rep}: {reg_loss.item()}"
+                )
+
+                loss = self.weighting * loss + (1 - self.weighting) * reg_loss
+                loss_update[self.regularized_loss_name] = reg_loss.item()
+
+            print(f"total loss at timestep {t} and rep {step_rep}: {loss.item()}")
+
+            self.metric_handler.update_loss(
+                loss_update,
+                t,
+            )
+
+            loss.backward()
+
+            with torch.no_grad():
+                prediction_grads = (
+                    self.gamma if gamma is None else gamma
+                ) * prediction.grad
+
+                print(f"prediction_grads max: {prediction_grads.max()}")
+                print(f"prediction_grads min: {prediction_grads.min()}")
+
+                prediction = prediction - prediction_grads
+
+            if self.mode != "only_guided":
+                noisy_mask = self.sampling_scheduler.step(
+                    model_output=prediction, timestep=t, sample=noisy_mask
+                ).prev_sample
+
+        return noisy_mask
