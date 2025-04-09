@@ -6,7 +6,7 @@
 #SBATCH --time=08:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=A100:1
+#SBATCH --gpus=1
 
 USERNAME=$USER
 PROJECT_NAME=master_thesis
@@ -74,7 +74,7 @@ mkdir -p ${WANDB_CACHE_DIR}
 # epsilon
 # python src/main.py project_name=dmiise diffusion=base_diffusion diffusion.prediction_type=sample diffusion.noise_steps=100 diffusion.num_inference_steps=100 validation_period=30 trainer.max_epochs=600 dataloader.batch_size=64 dataloader.val_batch_size=256 dataset=mnist_labeled model.name=basic_unet metrics=metrics_handler_binary_guidance loss=mse_loss dataset.data_path=data/MNIST_modified optimizer=optimizer_ema optimizer.lr=0.0001 optimizer.weight_decay=0.00001 seed=3874 dataset.mask_transformer.train_switch=False
 
-python src/main.py project_name=dmiise diffusion=base_diffusion diffusion.prediction_type=sample diffusion.noise_steps=100 diffusion.num_inference_steps=100 validation_period=30 trainer.max_epochs=300 dataloader.batch_size=16 dataloader.val_batch_size=64 dataset=bccd model.name=basic_unet model.emb_channels=256 metrics=metrics_handler_binary_guidance loss=x_0_pred_loss_binary dataset.data_path=data/BCCD optimizer=optimizer_ema optimizer.lr=0.001 optimizer.weight_decay=0.00000001 seed=3874 dataset.mask_transformer.train_switch=False
+# python src/main.py project_name=dmiise diffusion=base_diffusion diffusion.prediction_type=sample diffusion.noise_steps=100 diffusion.num_inference_steps=100 validation_period=30 trainer.max_epochs=300 dataloader.batch_size=16 dataloader.val_batch_size=64 dataset=bccd model.name=basic_unet model.emb_channels=256 metrics=metrics_handler_binary_guidance loss=x_0_pred_loss_binary dataset.data_path=data/BCCD optimizer=optimizer_ema optimizer.lr=0.001 optimizer.weight_decay=0.00000001 seed=3874 dataset.mask_transformer.train_switch=False
 
 
 # python src/main.py project_name=dmiise diffusion=sample_diffusion diffusion.noise_steps=100 validation_period=50 trainer.max_epochs=600 dataloader.batch_size=64 dataloader.val_batch_size=256 dataset=acdc diffusion.repetitions=1 diffusion.repetitions_test=1 model.name=basic_unet metrics=metrics_handler_multi loss=x_0_pred_loss dataset.data_path=data/ACDC optimizer=optimizer_ema optimizer.lr=0.001 optimizer.weight_decay=0.00000001 seed=3874
@@ -82,3 +82,7 @@ python src/main.py project_name=dmiise diffusion=base_diffusion diffusion.predic
 
 
 # python src/main.py project_name=dmiise diffusion=sample_diffusion diffusion.noise_steps=100 validation_period=20 trainer.max_epochs=300 dataloader.batch_size=64 dataloader.val_batch_size=128 dataset=bccd diffusion.repetitions=1 diffusion.repetitions_test=1 model.name=basic_unet metrics=metrics_handler_binary_guidance loss=x_0_pred_loss_binary dataset.data_path=data/BCCD optimizer=optimizer_ema
+
+
+#autoencoder
+python src/main.py project_name=autoencoder_seg diffusion=autoencoder_diffusion diffusion.prediction_type=epsilon diffusion.noise_steps=100 diffusion.num_inference_steps=100 validation_period=30 trainer.max_epochs=300 dataloader.batch_size=16 dataloader.val_batch_size=64 dataset=acdc model.name=basic_unet model.emb_channels=256 metrics=metrics_handler_multi loss=x_0_pred_loss dataset.data_path=data/ACDC optimizer=optimizer_ema optimizer.lr=0.001 optimizer.weight_decay=0.00000001 seed=3874 dataset.mask_transformer.train_switch=True diffusion.autoencoder.run_id=pzty0wxf

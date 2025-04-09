@@ -31,6 +31,10 @@ def create_segmentor(config: SegmentationConfig, **kwargs: dict):
         from models.auto_encoder.autoencoder import AutoEncoder
 
         return AutoEncoder(config)
+    elif project_name == "autoencoder_seg":
+        from models.auto_encoder.autoencoder_segmentation import AutoencoderSegmentation
+
+        return AutoencoderSegmentation(config)
     else:
         raise NotImplementedError(f"Segmentation model {project_name} not implemented")
 

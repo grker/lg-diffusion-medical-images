@@ -12,6 +12,7 @@ import wandb
 from guidance import LossGuider
 from loss import CustomLoss
 from metrics import MetricsHandler, MetricsInput
+from models.auto_encoder.autoencoder import EncoderDecoderModel
 from utils.helper import EMA, unpack_batch
 from utils.hydra_config import (
     DiffusionConfig,
@@ -155,14 +156,18 @@ class DDPM(pl.LightningModule):
 
         return images, gt_masks, gt_train_masks
 
+    def encode_mask(self, train_mask: torch.Tensor):
+        return train_mask
+
     def training_step(self, batch, batch_idx):
         self.model.train()
         self.log("learning rate", self.trainer.optimizers[0].param_groups[0]["lr"])
 
         images, gt_masks, gt_train_masks = unpack_batch(batch, "train")
+        gt_train_masks_encoded = self.encode_mask(gt_train_masks)
         num_samples = images.shape[0]
 
-        noise = torch.randn_like(gt_train_masks, device=gt_train_masks.device)
+        noise = torch.randn_like(gt_train_masks_encoded, device=gt_train_masks.device)
         timesteps = torch.randint(
             0,
             self.scheduler.config.num_train_timesteps,
@@ -170,7 +175,7 @@ class DDPM(pl.LightningModule):
             device=gt_train_masks.device,
             dtype=torch.int64,
         )
-        noisy_image = self.scheduler.add_noise(gt_train_masks, noise, timesteps)
+        noisy_image = self.scheduler.add_noise(gt_train_masks_encoded, noise, timesteps)
         prediction = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
 
         loss = 0.0
@@ -856,20 +861,17 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
         else:
             raise ValueError(f"Mode {self.mode} not supported!")
 
-        # for name, param in self.model.named_parameters():
-        #     if param.grad is not None:
-        #         print(name, param.grad.shape)
-
-        print(f"prediction has grad: {prediction.requires_grad}")
+        optimized_prediction = torch.nn.Parameter(
+            prediction.detach().clone(), requires_grad=True
+        )
 
         for step_rep in range(self.reps_per_guided_step):
-            print(f"iterating over reps {step_rep}")
             loss_update = {}
             loss = 0.0
 
             if self.mode != "dps_only_reg":
                 guidance_loss = self.loss_guider.guidance_loss(
-                    prediction,
+                    optimized_prediction,
                     t,
                     batch_idx,
                     **topo_inputs,
@@ -900,38 +902,62 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
                 t,
             )
 
-            prediction.retain_grad()
-
-            loss.backward()
+            loss.backward(retain_graph=True)
 
             with torch.no_grad():
-                print(f"prediciton grads: {prediction.grad}")
                 prediction_grads = (
                     self.gamma if gamma is None else gamma
-                ) * prediction.grad
+                ) * optimized_prediction.grad
 
                 print(f"prediction_grads max: {prediction_grads.max()}")
                 print(f"prediction_grads min: {prediction_grads.min()}")
 
-                prediction = prediction - prediction_grads.detach()
-                prediction = prediction.detach()
+                optimized_prediction = optimized_prediction - prediction_grads
 
-                print(f"prediction has grad after: {prediction.requires_grad}")
-                prediction = prediction.requires_grad_(True)
+                optimized_prediction = optimized_prediction.detach()
+                optimized_prediction.grad = None
+                prediction_grads = None
 
-                print(f"prediction has grad after: {prediction.requires_grad}")
+                optimized_prediction.requires_grad_(True)
 
-            print(f"prediction has grad: {prediction.requires_grad}")
-            prediction = prediction.requires_grad_(True)
+        with torch.no_grad():
+            if self.mode != "only_guided":
+                noisy_mask = self.sampling_scheduler.step(
+                    model_output=optimized_prediction, timestep=t, sample=noisy_mask
+                ).prev_sample
 
-            print(f"prediction has grad after: {prediction.requires_grad}")
-
-        if self.mode != "only_guided":
-            noisy_mask = self.sampling_scheduler.step(
-                model_output=prediction, timestep=t, sample=noisy_mask
-            ).prev_sample
+            optimized_prediction = optimized_prediction.detach()
+            optimized_prediction.grad = None
 
         if return_gradients:
             return noisy_mask, prediction_grads
         else:
             return noisy_mask
+
+
+class DDPM_Autoencoder(DDPM):
+    def __init__(
+        self,
+        model: nn.Module,
+        diffusion_config: DiffusionConfig,
+        optimizer_config: OptimizerConfig,
+        metrics: MetricsHandler,
+        mask_transformer: BaseMaskMapping,
+        loss: torch.nn.Module,
+        autoencoder: EncoderDecoderModel,
+    ):
+        super().__init__(
+            model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
+        )
+
+        self.autoencoder = autoencoder
+        self.autoencoder.eval()
+
+    def encode_mask(self, train_mask: torch.Tensor):
+        return self.autoencoder.encode(train_mask)
+
+    def decode_mask(self, encoded_mask: torch.Tensor):
+        return self.autoencoder.decode(encoded_mask)
+
+    def val_test_step(self, batch, batch_idx, phase):
+        return super().val_test_step(batch, batch_idx, phase)

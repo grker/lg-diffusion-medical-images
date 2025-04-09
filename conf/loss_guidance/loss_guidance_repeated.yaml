@@ -1,0 +1,12 @@
+defaults:
+  - guider: seg_comp
+  - regularizer: dice_regularizer
+  - _self_
+
+gamma: 0.1
+starting_step: 30
+visualize_gradients: False
+mode: dps_guidance
+stop_step: 1
+type: repeated
+reps_per_guided_step: 5

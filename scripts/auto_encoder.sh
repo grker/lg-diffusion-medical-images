@@ -1,12 +1,12 @@
-#!/usr/bin/bash -l
+#!/usr/bin/env bash
 #SBATCH -p lowprio
 #SBATCH --mail-type=NONE # mail configuration: NONE, BEGIN, END, FAIL, REQUEUE, AL
 #SBATCH --output=/data/%u/master_thesis/jobs/%j.out # where to store the output (%j is the JOBID), subdirectory "jobs" must exist
 #SBATCH --error=/data/%u/master_thesis/jobs/%j.err # where to store error messages
-#SBATCH --time=6:00:00
+#SBATCH --time=08:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=A100:1
+#SBATCH --gpus=1
 
 USERNAME=$USER
 PROJECT_NAME=master_thesis
@@ -40,7 +40,7 @@ echo "Starting on: $(date)"
 echo "SLURM_JOB_ID: ${SLURM_JOB_ID}"
 
 module load mamba gpu cuda/12.4
-# nvidia-smi
+nvidia-smi
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
@@ -62,13 +62,10 @@ fi
 # <<< conda initialize <<<
 
 mamba activate ${MAMBA_ENVIRONMENT}
-echo "Mamba activated using the environment ${MAMBA_ENVIRONMENT}"
+echo "Mamba activated"
 cd ${DIRECTORY}
 
 export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
-
-python src/loss_guidance.py run_id=4icxcjql loss_guidance=loss_guidance_repeated loss_guidance/guider=seg_comp loss_guidance.guider.name=LossGuiderSegmentationCycles loss_guidance.starting_step=30 loss_guidance.stop_step=1 loss_guidance.gamma=1500 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_multi loss_guidance.regularizer.weighting=0.5 loss_guidance/regularizer=dice_regularizer
-
-# python src/loss_guidance.py run_id=4icxcjql loss_guidance=no_guidance test_batch_size=16  metrics=metrics_handler_multi repetitions='[1, 5, 10, 15]'
+python src/main.py project_name=autoencoder validation_period=1 trainer.max_epochs=50 dataloader.batch_size=64 dataloader.val_batch_size=128 dataset.mask_transformer.train_switch=False metrics=metrics_handler_multi loss=mse_loss trainer.argmax_metric=val_loss
