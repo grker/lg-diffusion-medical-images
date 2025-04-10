@@ -7,3 +7,4 @@ loss_fns_config:
       reduction: mean
       softmax: True
 log_loss_parts: False
+model_output_type: probs

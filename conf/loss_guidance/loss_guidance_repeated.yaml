@@ -9,4 +9,6 @@ visualize_gradients: False
 mode: dps_guidance
 stop_step: 1
 type: repeated
+input_type: x_0
 reps_per_guided_step: 5
+model_output_type: probs

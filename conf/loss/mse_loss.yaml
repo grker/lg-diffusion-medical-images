@@ -3,3 +3,4 @@ loss_fns_config:
     scale: 1.0
     args: null
 log_loss_parts: False
+model_output_type: pure

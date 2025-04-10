@@ -8,3 +8,5 @@ starting_step: 1 # starting step and stop step need to be the same
 stop_step: 1
 mode: only_guided
 visualize_gradients: False
+input_type: x_0
+model_output_type: probs

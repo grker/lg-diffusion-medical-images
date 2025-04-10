@@ -53,6 +53,10 @@ class CustomLoss(torch.nn.Module):
         super().__init__()
         self.loss_fns, self.scales = generate_loss_fns(config)
         self.log_loss_parts = config.log_loss_parts
+        if "model_output_type" in config:
+            self.model_output_type = config.model_output_type
+        else:
+            self.model_output_type = "probs"
 
     def forward(
         self,

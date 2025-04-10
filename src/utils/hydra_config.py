@@ -129,6 +129,7 @@ class Loss:
 class LossConfig:
     loss_fns_config: dict[str, Loss]
     log_loss_parts: bool
+    model_output_type: str
 
 
 class RegLossConfig(LossConfig):
@@ -248,6 +249,7 @@ class LossGuidanceConfig:
     guidance_metrics: MetricsConfig
     guider: GuiderConfig
     regularizer: RegularizerConfig | None
+    input_type: str
 
 
 class LossGuidanceRepeatedConfig(LossGuidanceConfig):

@@ -125,6 +125,7 @@ class DmiiseSegmentation(BaseSegmentation):
         if self.loss_guided:
             if hasattr(self.config.diffusion.loss_guidance, "type"):
                 if self.config.diffusion.loss_guidance.type == "dps":
+                    print("returning DDPM_DPS_Regularized")
                     return DDPM_DPS_Regularized
                 elif self.config.diffusion.loss_guidance.type == "repeated":
                     return DDPM_DPS_Regularized_Repeated
@@ -134,7 +135,6 @@ class DmiiseSegmentation(BaseSegmentation):
                     )
             else:
                 return DDPM_DPS_Regularized
-
         else:
             return DDPM
 

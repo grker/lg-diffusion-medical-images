@@ -6,7 +6,7 @@ standard_metrics:
         reduction: mean
         num_classes: 2
         ignore_empty: True
-      guidance: False
+      guidance: True
     BettiNumberMetric:
       kwargs:
         connectivity: 2
@@ -23,4 +23,4 @@ topo_metrics:
         include_background: False
       guidance: False # Tracked in the guidance
 guided_step_metrics:
-starting_step: 0
+starting_step: 100
