@@ -1,0 +1,20 @@
+standard_metrics:
+  metric_fns_config:
+    ClassWiseDiceMetric:
+      kwargs:
+        include_background: False
+        reduction: mean
+        num_classes: 2
+        ignore_empty: True
+      guidance: True
+topo_metrics:
+  metric_fns_config:
+    DigitBettiNumberMetric:
+      kwargs:
+        connectivity: 2
+        num_labels: 10
+        include_background: False
+        only_components: True
+      guidance: False # Tracked in the guidance
+guided_step_metrics:
+starting_step: 100

@@ -213,8 +213,6 @@ class GuidanceMetric:
 
             self.total_batches[timestep] += 1
 
-        print(f"losses per timestep: {self.losses_per_timestep}")
-
     def compute(self):
         metric_values = {}
         for name, metric_fn in self.metrics_dict.items():

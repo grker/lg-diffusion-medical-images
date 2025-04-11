@@ -89,6 +89,7 @@ def main(config: LossGuidanceInferenceConfig):
         old_config.metrics = config.metrics
 
     wandb_tags = create_wandb_tags(old_config)
+    wandb_tags.append(config.run_id)
     print(f"wandb_tags: {wandb_tags}")
     run.tags = wandb_tags
 

@@ -68,11 +68,9 @@ class TopoLoss(torch.nn.Module):
                 comp_loss += self.comp_lengths(
                     interval_info, betti_0[sample_idx, class_idx]
                 )
-                print(f"comp_loss: {comp_loss}")
                 cycle_loss += self.cycle_lengths(
                     interval_info, betti_1[sample_idx, class_idx]
                 )
-                print(f"cycle_loss: {cycle_loss}")
 
         if self.average == "sample_class":
             comp_loss /= prediction.shape[0] * prediction.shape[1]

@@ -1,6 +1,6 @@
 project: difseg
 program: src/loss_guidance.py
-name: acdc_cycle_x_0_probs_4icxcjql
+name: acdc_topo_x_0_probs_29bjivsr
 method: grid
 metric:
   goal: minimize
@@ -14,23 +14,23 @@ parameters:
   loss_guidance.input_type:
     values: [x_0]
   loss_guidance.gamma:
-    values: [500, 1000, 1500, 5000]
+    values: [1, 10, 50, 100]
   loss_guidance/guider:
-    values: [seg_comp]
+    values: [topo_guider_multi]
   loss_guidance.guider.name:
-    values: [LossGuiderSegmentationCycles]
+    values: [TopoGuider]
   loss_guidance.mode:
     values: [dps_guidance]
   loss_guidance.regularizer.weighting:
     values: [0.2, 0.5, 1.0]
   loss_guidance.starting_step:
-    values: [30, 50, 90]
+    values: [10, 30, 50]
   loss_guidance.stop_step:
     values: [1]
   loss_guidance/regularizer:
     values: [dice_regularizer]
   run_id:
-    values: [4icxcjql]
+    values: [29bjivsr]
   test_batch_size:
     values: [16]
 

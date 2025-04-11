@@ -1,6 +1,6 @@
 project: difseg
 program: src/loss_guidance.py
-name: acdc_cycle_x_0_probs_4icxcjql
+name: bccd_comps_x_0_probs_bhoaix1n
 method: grid
 metric:
   goal: minimize
@@ -8,7 +8,7 @@ metric:
 
 parameters:
   loss_guidance:
-    values: [loss_guidance_3step]
+    values: [loss_guidance_digits]
   loss_guidance.model_output_type:
     values: [probs]
   loss_guidance.input_type:
@@ -16,9 +16,9 @@ parameters:
   loss_guidance.gamma:
     values: [500, 1000, 1500, 5000]
   loss_guidance/guider:
-    values: [seg_comp]
+    values: [seg_comp_digits]
   loss_guidance.guider.name:
-    values: [LossGuiderSegmentationCycles]
+    values: [LossGuiderSegmentationComponentsDigits]
   loss_guidance.mode:
     values: [dps_guidance]
   loss_guidance.regularizer.weighting:
@@ -30,7 +30,7 @@ parameters:
   loss_guidance/regularizer:
     values: [dice_regularizer]
   run_id:
-    values: [4icxcjql]
+    values: [bhoaix1n]
   test_batch_size:
     values: [16]
 

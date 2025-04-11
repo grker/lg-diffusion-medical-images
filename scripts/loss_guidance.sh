@@ -72,9 +72,19 @@ mkdir -p ${WANDB_CACHE_DIR}
 # python src/loss_guidance.py run_id=4icxcjql loss_guidance=loss_guidance_repeated loss_guidance/guider=seg_comp loss_guidance.guider.name=LossGuiderSegmentationCycles loss_guidance.starting_step=30 loss_guidance.stop_step=1 loss_guidance.gamma=1500 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_multi loss_guidance.regularizer.weighting=0.5 loss_guidance/regularizer=dice_regularizer
 
 #vz8na4lv
+# du92ni24 --> big model bhoaix1n
 
-# python src/loss_guidance.py run_id=29bjivsr loss_guidance=loss_guidance_3step loss_guidance/guider=seg_comp loss_guidance.guider.name=LossGuiderSegmentationCycles loss_guidance.starting_step=30 loss_guidance.stop_step=1 loss_guidance.gamma=5000 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_multi loss_guidance.regularizer.weighting=1.0 loss_guidance/regularizer=dice_regularizer loss_guidance.input_type=x_0 loss_guidance.model_output_type=probs seed=378
+# python src/loss_guidance.py run_id=du92ni24 loss_guidance=loss_guidance_3step loss_guidance/guider=seg_comp loss_guidance.guider.name=LossGuiderSegmentationCycles loss_guidance.starting_step=1 loss_guidance.stop_step=1 loss_guidance.gamma=5000 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_multi loss_guidance.regularizer.weighting=1.0 loss_guidance/regularizer=dice_regularizer loss_guidance.input_type=x_0 loss_guidance.model_output_type=probs seed=378
 
-python src/loss_guidance.py run_id=vz8na4lv loss_guidance=loss_guidance_digits loss_guidance/guider=seg_comp_digits loss_guidance.guider.name=LossGuiderSegmenationCyclesDigits loss_guidance.starting_step=1 loss_guidance.stop_step=1 loss_guidance.gamma=1500 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_binary_guidance loss_guidance.regularizer.weighting=0.5 loss_guidance/regularizer=dice_regularizer
+# TopoGuider
+# python src/loss_guidance.py run_id=29bjivsr loss_guidance=loss_guidance_3step loss_guidance/guider=topo_guider_multi loss_guidance.starting_step=30 loss_guidance.stop_step=1 loss_guidance.gamma=100 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_multi loss_guidance.regularizer.weighting=1.0 loss_guidance/regularizer=dice_regularizer loss_guidance.input_type=x_0 loss_guidance.model_output_type=probs seed=657
+
+# 29bjivsr
+
+
+# python src/loss_guidance.py run_id=vz8na4lv loss_guidance=loss_guidance_digits loss_guidance/guider=seg_comp_digits loss_guidance.guider.name=LossGuiderSegmenationCyclesDigits loss_guidance.starting_step=30 loss_guidance.stop_step=1 loss_guidance.gamma=1500 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_binary_guidance loss_guidance.regularizer.weighting=0.5 loss_guidance/regularizer=dice_regularizer loss_guidance.model_output_type=pure
+
+# for BCCD
+python src/loss_guidance.py run_id=bhoaix1n loss_guidance=loss_guidance_digits loss_guidance/guider=seg_comp_digits loss_guidance.guider.name=class loss_guidance.guider.name=LossGuiderSegmentationComponentsDigits loss_guidance.starting_step=30 loss_guidance.stop_step=1 loss_guidance.gamma=1500 test_batch_size=16 loss_guidance.visualize_gradients=False loss_guidance.mode=dps_guidance metrics=metrics_handler_bccd loss_guidance.regularizer.weighting=0.5 loss_guidance/regularizer=dice_regularizer loss_guidance.model_output_type=probs
 
 # python src/loss_guidance.py run_id=4icxcjql loss_guidance=no_guidance test_batch_size=16  metrics=metrics_handler_multi repetitions='[1, 5, 10, 15]'
