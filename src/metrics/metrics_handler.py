@@ -347,6 +347,59 @@ class MetricsHandler:
         self.compute_standard_metrics(inputs.seg_mask, inputs.gt, phase, logger)
         self.compute_topo_metrics(inputs.seg_mask, inputs.topo_inputs, phase, logger)
 
+    def get_index_of_sub_metric(
+        self, metric_name: str, metric_fn: torch.nn.Module, sub_name: str
+    ):
+        if (
+            sub_name is not None
+            and hasattr(metric_fn, "logging_names")
+            and metric_fn.logging_names is not None
+        ):
+            try:
+                return metric_fn.logging_names.index(sub_name)
+            except ValueError:
+                raise ValueError(
+                    f"Metric {metric_name} does not have a logging name {sub_name}"
+                )
+        else:
+            return None
+
+    def find_bad_samples(
+        self,
+        inputs: MetricsInput,
+        metric_name: str,
+        sub_name: str = None,
+        threshold: float = 0.0,
+    ):
+        score = None
+
+        if metric_name in self.standard_metrics.keys():
+            metric_fn = self.standard_metrics[metric_name]
+            index = self.get_index_of_sub_metric(metric_name, metric_fn, sub_name)
+
+            if index is None:
+                score = metric_fn(inputs.seg_mask, inputs.gt)
+            else:
+                score = metric_fn(inputs.seg_mask, inputs.gt)[index]
+
+        if metric_name in self.topo_metrics.keys():
+            metric_fn = self.topo_metrics[metric_name]
+            index = self.get_index_of_sub_metric(metric_name, metric_fn, sub_name)
+
+            if index is None:
+                score = metric_fn(inputs.seg_mask, **inputs.topo_inputs)
+            else:
+                score = metric_fn(inputs.seg_mask, **inputs.topo_inputs)[index]
+
+        if score is None:
+            raise ValueError(
+                f"Metric {metric_name} that should be used to find bad samples not found"
+            )
+
+        indices = torch.nonzero(score > threshold, as_tuple=False)
+
+        return indices, score
+
     def compute_standard_metrics(
         self, seg_mask: torch.Tensor, gt: torch.Tensor, phase: str, logger
     ):

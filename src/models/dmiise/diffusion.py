@@ -11,7 +11,7 @@ from tqdm import tqdm
 import wandb
 from guidance import LossGuider
 from loss import CustomLoss
-from metrics import MetricsHandler, MetricsInput
+from metrics import MetricsHandler, MetricsInput, clean_nan_scores_and_avg
 from models.auto_encoder.autoencoder import EncoderDecoderModel
 from utils.helper import EMA, unpack_batch
 from utils.hydra_config import (
@@ -428,6 +428,7 @@ class DDPM_DPS_Regularized(DDPM):
     starting_step: int
     stop_step: int
     gamma: float
+    deciding_metrics: list[str]
 
     def __init__(
         self,
@@ -490,6 +491,9 @@ class DDPM_DPS_Regularized(DDPM):
 
         self.starting_step = loss_guidance_config.starting_step
         self.stop_step = loss_guidance_config.stop_step
+        self.deciding_metrics = loss_guidance_config.deciding_metrics
+
+        print(f"deciding_metrics: {self.deciding_metrics}")
 
         assert (
             self.stop_step <= self.starting_step
@@ -520,6 +524,7 @@ class DDPM_DPS_Regularized(DDPM):
     def prepare_reference_mask(
         self, reference_mask: torch.Tensor, mode: str = "segmentation"
     ):
+        print(f"preparing reference mask with mode: {mode}")
         if mode in ["segmentation", "softmax"]:
             if self.model_output_type != "probs":
                 print("Applying softmax to reference mask!!!")
@@ -546,81 +551,143 @@ class DDPM_DPS_Regularized(DDPM):
         reps = self.repetitions_test if phase == "test" else self.repetitions
 
         # Run the whole backward pass once to get the reference mask, all steps are unguided
-        if self.regularizer:
-            reference_mask = torch.rand_like(gt_train_masks, device=images.device)
 
-            for t in tqdm(self.scheduler.timesteps):
-                reference_mask = self.unguided_step(reference_mask, gt_masks, images, t)
+        reference_mask = torch.rand_like(gt_train_masks, device=images.device)
 
-            # add the reference mask to the topo_inputs
-            topo_inputs["reference_mask"] = self.prepare_reference_mask(
-                reference_mask, self.mode_for_reference_mask
-            )
-        else:
-            print("no regularizer!")
+        for t in tqdm(self.scheduler.timesteps):
+            reference_mask = self.unguided_step(reference_mask, gt_masks, images, t)
 
-        ensemble_mask = []
+        # add the reference mask to the topo_inputs
+        topo_inputs["reference_mask"] = self.prepare_reference_mask(
+            reference_mask, self.mode_for_reference_mask
+        )
+
+        segmentation_reference_mask = self.mask_transformer.get_segmentation(
+            self.mask_transformer.get_logits(reference_mask.unsqueeze(0))
+        )
+
+        metrics_input = MetricsInput(
+            segmentation_reference_mask,
+            gt_masks.to(segmentation_reference_mask.device),
+            topo_inputs,
+        )
+
+        bad_indices = torch.empty(0).to("cpu")
+        # bad_indices = torch.empty(0, device=images.device, dtype=torch.int64)
+        for metric_name, sub_names in self.deciding_metrics.items():
+            for sub_name in sub_names:
+                bad_samples, scores = self.metric_handler.find_bad_samples(
+                    metrics_input, metric_name, sub_name
+                )
+                bad_samples = bad_samples.flatten().to(device=bad_indices.device)
+                bad_indices = torch.cat((bad_indices, bad_samples), dim=0)
+                self.log(
+                    f"{phase}_{sub_name}_without_guidance",
+                    clean_nan_scores_and_avg(scores),
+                )
+
+        bad_indices = torch.unique(bad_indices).to(torch.int64)
+
+        if len(bad_indices) == 0:
+            print("No bad indices found, skipping guided backward pass")
+
         # run the actual guided backward pass
-        for rep in range(reps):
-            noisy_mask = torch.rand_like(gt_train_masks, device=images.device)
+        if len(bad_indices) > 0:
+            images_bad_samples = images[bad_indices]
+            gt_masks_bad_samples = gt_masks[bad_indices]
+            gt_train_masks_bad_samples = gt_train_masks[bad_indices]
+            topo_inputs_bad_samples = {
+                key: value[bad_indices] for key, value in topo_inputs.items()
+            }
 
-            # unguided diffusion steps
-            for t in tqdm(self.scheduler.timesteps[: -self.starting_step]):
-                noisy_mask = self.unguided_step(noisy_mask, gt_masks, images, t)
-
-            # activate the gradient for the model for the guided steps
-            for name, param in self.model.named_parameters():
-                if not param.requires_grad:
-                    param.requires_grad_(True)
-
-            noisy_mask = noisy_mask.requires_grad_(True)
-
-            # guided steps
-            for t in self.scheduler.timesteps[-self.starting_step : -self.stop_step]:
-                noisy_mask = self.guided_step(
-                    noisy_mask, images, topo_inputs, t, batch_idx
+            ensemble_mask = []
+            for rep in range(reps):
+                noisy_mask = torch.rand_like(
+                    gt_train_masks_bad_samples, device=images.device
                 )
-                self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, t)
 
-            if self.no_switch:
-                noisy_mask = self.guided_step(
-                    noisy_mask, images, topo_inputs, 0, batch_idx
-                )
-                self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, 0)
+                # unguided diffusion steps
+                for t in tqdm(self.scheduler.timesteps[: -self.starting_step]):
+                    noisy_mask = self.unguided_step(
+                        noisy_mask, gt_masks_bad_samples, images_bad_samples, t
+                    )
 
-                # deactivate the gradient for the model
+                # activate the gradient for the model for the guided steps
                 for name, param in self.model.named_parameters():
-                    if param.requires_grad:
-                        param.requires_grad_(False)
+                    if not param.requires_grad:
+                        param.requires_grad_(True)
 
-            else:
-                # again unguided steps
-                for t in self.scheduler.timesteps[-self.stop_step :]:
-                    noisy_mask = noisy_mask.requires_grad_(False)
-                    noisy_mask = self.unguided_step(noisy_mask, gt_masks, images, t)
+                noisy_mask = noisy_mask.requires_grad_(True)
 
-                    self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, t)
+                # guided steps
+                for t in self.scheduler.timesteps[
+                    -self.starting_step : -self.stop_step
+                ]:
+                    noisy_mask = self.guided_step(
+                        noisy_mask,
+                        images_bad_samples,
+                        topo_inputs_bad_samples,
+                        t,
+                        batch_idx,
+                    )
+                    self.guidance_metrics(
+                        noisy_mask, gt_masks_bad_samples, topo_inputs_bad_samples, t
+                    )
 
-            ensemble_mask.append(noisy_mask.detach().cpu())
+                if self.no_switch:
+                    noisy_mask = self.guided_step(
+                        noisy_mask,
+                        images_bad_samples,
+                        topo_inputs_bad_samples,
+                        0,
+                        batch_idx,
+                    )
+                    self.guidance_metrics(
+                        noisy_mask, gt_masks_bad_samples, topo_inputs_bad_samples, 0
+                    )
 
-            if self.regularizer and self.repeated:
-                topo_inputs["reference_mask"] = self.prepare_reference_mask(
-                    noisy_mask, self.mode_for_reference_mask
-                )
+                    # deactivate the gradient for the model
+                    for name, param in self.model.named_parameters():
+                        if param.requires_grad:
+                            param.requires_grad_(False)
 
-            self.metric_handler.log_guidance_metrics()
+                else:
+                    # again unguided steps
+                    for t in self.scheduler.timesteps[-self.stop_step :]:
+                        noisy_mask = noisy_mask.requires_grad_(False)
+                        noisy_mask = self.unguided_step(
+                            noisy_mask, gt_masks_bad_samples, images_bad_samples, t
+                        )
 
-        ensemble_mask = torch.stack(ensemble_mask, dim=0)
-        if self.regularizer and self.repeated and self.final_mask == "last":
-            ensemble_mask = ensemble_mask[-1].unsqueeze(0)
+                        self.guidance_metrics(
+                            noisy_mask, gt_masks_bad_samples, topo_inputs_bad_samples, t
+                        )
 
-        logits = self.mask_transformer.get_logits(ensemble_mask)
+                ensemble_mask.append(noisy_mask.detach().cpu())
 
-        seg_mask = self.mask_transformer.get_segmentation(logits)
-        gt_masks = gt_masks.to(device=seg_mask.device)
+                if self.regularizer and self.repeated:
+                    topo_inputs_bad_samples["reference_mask"] = (
+                        self.prepare_reference_mask(
+                            noisy_mask, self.mode_for_reference_mask
+                        )
+                    )
+
+                self.metric_handler.log_guidance_metrics()
+
+            ensemble_mask = torch.stack(ensemble_mask, dim=0)
+            if self.regularizer and self.repeated and self.final_mask == "last":
+                ensemble_mask = ensemble_mask[-1].unsqueeze(0)
+
+            logits = self.mask_transformer.get_logits(ensemble_mask)
+
+            seg_mask = self.mask_transformer.get_segmentation(logits)
+            segmentation_reference_mask[bad_indices] = seg_mask.to(
+                device=segmentation_reference_mask.device
+            )
 
         # Metrics computation
-        metrics_input = MetricsInput(seg_mask, gt_masks, topo_inputs)
+        gt_masks = gt_masks.to(device=segmentation_reference_mask.device)
+        metrics_input = MetricsInput(segmentation_reference_mask, gt_masks, topo_inputs)
         self.metric_handler.compute_metrics(metrics_input, phase, self.log)
 
         # Visualization
@@ -628,7 +695,7 @@ class DDPM_DPS_Regularized(DDPM):
         visualize_segmentation(
             images,
             gt_masks,
-            seg_mask,
+            segmentation_reference_mask,
             None,
             phase,
             self.mask_transformer.gt_mapping_for_visualization(),
@@ -669,6 +736,9 @@ class DDPM_DPS_Regularized(DDPM):
         generator: torch.Generator | None = None,
     ):
         with torch.no_grad():
+            print(f"noisy_mask shape: {noisy_mask.shape}")
+            print(f"images shape: {images.shape}")
+            print(f"t: {t}")
             model_output = self.get_model_output(noisy_mask, images, t)
 
             noisy_mask = self.scheduler.step(
@@ -764,9 +834,7 @@ class DDPM_DPS_Regularized(DDPM):
         loss.backward()
 
         with torch.no_grad():
-            guidance_grads = (
-                self.gamma if gamma is None else gamma
-            ) * guidance_input.grad
+            guidance_grads = (self.gamma if gamma is None else gamma) * noisy_mask.grad
 
             print(f"guidance_grads max: {guidance_grads.max()}")
             print(f"guidance_grads min: {guidance_grads.min()}")

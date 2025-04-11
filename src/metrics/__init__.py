@@ -1,4 +1,4 @@
-from .metrics_handler import MetricsHandler, MetricsInput
+from .metrics_handler import MetricsHandler, MetricsInput, clean_nan_scores_and_avg
 from .metrics_wrapper import (
     BettiNumberMetric,
     ClassWiseDiceMetric,
@@ -13,4 +13,5 @@ __all__ = [
     "DigitBettiNumberMetric",
     "MetricsHandler",
     "MetricsInput",
+    "clean_nan_scores_and_avg",
 ]

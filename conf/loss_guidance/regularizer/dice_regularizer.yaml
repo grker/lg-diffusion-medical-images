@@ -11,4 +11,4 @@ reg_loss:
 weighting: 0.5
 repeated: False
 average_ensemble: last
-mode_for_reference_mask: segmentation
+mode_for_reference_mask: softmax

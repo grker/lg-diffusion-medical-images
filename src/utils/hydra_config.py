@@ -250,6 +250,7 @@ class LossGuidanceConfig:
     guider: GuiderConfig
     regularizer: RegularizerConfig | None
     input_type: str
+    deciding_metrics: dict[str, list[str]] | None
 
 
 class LossGuidanceRepeatedConfig(LossGuidanceConfig):
