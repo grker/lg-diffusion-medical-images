@@ -2,5 +2,5 @@ loss_fns_config:
   CrossEntropyLoss:
     scale: 1.0
     args:
-      reduction: sum
+      reduction: mean
 log_loss_parts: False

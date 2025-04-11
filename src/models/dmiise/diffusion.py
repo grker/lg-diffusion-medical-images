@@ -11,7 +11,7 @@ from tqdm import tqdm
 import wandb
 from guidance import LossGuider
 from loss import CustomLoss
-from metrics import MetricsHandler, MetricsInput, clean_nan_scores_and_avg
+from metrics import MetricsHandler, MetricsInput
 from models.auto_encoder.autoencoder import EncoderDecoderModel
 from utils.helper import EMA, unpack_batch
 from utils.hydra_config import (
@@ -190,10 +190,10 @@ class DDPM(pl.LightningModule):
             torch.full((num_samples,), timestep, device=images.device),
         )
 
-        print(f"timestep: {timestep}")
+        # print(f"timestep: {timestep}")
 
-        print(f"model_output max: {model_output.max()}")
-        print(f"model_output min: {model_output.min()}")
+        # print(f"model_output max: {model_output.max()}")
+        # print(f"model_output min: {model_output.min()}")
 
         if self.model_output_type == "pure":
             return model_output
@@ -203,8 +203,8 @@ class DDPM(pl.LightningModule):
             else:
                 softmax_model_output = torch.softmax(model_output, dim=1)
 
-            print(f"softmax_model_output max: {softmax_model_output.max()}")
-            print(f"softmax_model_output min: {softmax_model_output.min()}")
+            # print(f"softmax_model_output max: {softmax_model_output.max()}")
+            # print(f"softmax_model_output min: {softmax_model_output.min()}")
             return softmax_model_output
         else:
             raise ValueError(
@@ -550,6 +550,8 @@ class DDPM_DPS_Regularized(DDPM):
         num_samples = images.shape[0]
         reps = self.repetitions_test if phase == "test" else self.repetitions
 
+        print(f"topo_inputs: {topo_inputs}")
+
         # Run the whole backward pass once to get the reference mask, all steps are unguided
 
         reference_mask = torch.rand_like(gt_train_masks, device=images.device)
@@ -572,19 +574,23 @@ class DDPM_DPS_Regularized(DDPM):
             topo_inputs,
         )
 
+        self.metric_handler.compute_metrics(
+            metrics_input, f"without_guidance_{phase}", self.log
+        )
+
         bad_indices = torch.empty(0).to("cpu")
         # bad_indices = torch.empty(0, device=images.device, dtype=torch.int64)
         for metric_name, sub_names in self.deciding_metrics.items():
             for sub_name in sub_names:
-                bad_samples, scores = self.metric_handler.find_bad_samples(
+                bad_samples, _ = self.metric_handler.find_bad_samples(
                     metrics_input, metric_name, sub_name
                 )
                 bad_samples = bad_samples.flatten().to(device=bad_indices.device)
                 bad_indices = torch.cat((bad_indices, bad_samples), dim=0)
-                self.log(
-                    f"{phase}_{sub_name}_without_guidance",
-                    clean_nan_scores_and_avg(scores),
-                )
+                # self.log(
+                #     f"{phase}_{sub_name}_without_guidance",
+                #     clean_nan_scores_and_avg(scores),
+                # )
 
         bad_indices = torch.unique(bad_indices).to(torch.int64)
 
@@ -736,9 +742,6 @@ class DDPM_DPS_Regularized(DDPM):
         generator: torch.Generator | None = None,
     ):
         with torch.no_grad():
-            print(f"noisy_mask shape: {noisy_mask.shape}")
-            print(f"images shape: {images.shape}")
-            print(f"t: {t}")
             model_output = self.get_model_output(noisy_mask, images, t)
 
             noisy_mask = self.scheduler.step(

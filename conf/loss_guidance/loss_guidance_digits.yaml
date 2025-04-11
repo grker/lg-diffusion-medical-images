@@ -11,4 +11,4 @@ stop_step: 1
 input_type: x_0
 model_output_type: probs
 deciding_metrics:
-  DigitBettiNumberMetric: [digit_betti_number_labels_0, digit_betti_number_labels_1]
+  DigitBettiNumberMetric: [digit_betti_number_0, digit_betti_number_1]

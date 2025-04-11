@@ -350,6 +350,7 @@ class MetricsHandler:
     def get_index_of_sub_metric(
         self, metric_name: str, metric_fn: torch.nn.Module, sub_name: str
     ):
+        print(f"logging_names: {metric_fn.logging_names}")
         if (
             sub_name is not None
             and hasattr(metric_fn, "logging_names")
@@ -372,6 +373,8 @@ class MetricsHandler:
         threshold: float = 0.0,
     ):
         score = None
+        print(f"topo_metrics: {self.topo_metrics}")
+        print(f"standard_metrics: {self.standard_metrics}")
 
         if metric_name in self.standard_metrics.keys():
             metric_fn = self.standard_metrics[metric_name]
@@ -386,10 +389,17 @@ class MetricsHandler:
             metric_fn = self.topo_metrics[metric_name]
             index = self.get_index_of_sub_metric(metric_name, metric_fn, sub_name)
 
+            needed_inputs = metric_fn.get_needed_inputs()
+            kwargs = {}
+            for input_name in needed_inputs:
+                kwargs[input_name] = inputs.topo_inputs[input_name]
+
             if index is None:
-                score = metric_fn(inputs.seg_mask, **inputs.topo_inputs)
+                score = metric_fn(inputs.seg_mask, **kwargs)
             else:
-                score = metric_fn(inputs.seg_mask, **inputs.topo_inputs)[index]
+                score = metric_fn(inputs.seg_mask, **kwargs)[index]
+
+            print(f"score: {score}")
 
         if score is None:
             raise ValueError(
