@@ -8,7 +8,7 @@ metric:
 
 parameters:
   loss_guidance:
-    values: [loss_guidance_digits]
+    values: [loss_guidance_bccd]
   loss_guidance.model_output_type:
     values: [probs]
   loss_guidance.input_type:
@@ -24,7 +24,7 @@ parameters:
   loss_guidance.regularizer.weighting:
     values: [0.2, 0.5, 1.0]
   loss_guidance.starting_step:
-    values: [30, 50, 90]
+    values: [10, 30, 50]
   loss_guidance.stop_step:
     values: [1]
   loss_guidance/regularizer:
@@ -33,6 +33,8 @@ parameters:
     values: [bhoaix1n]
   test_batch_size:
     values: [16]
+  metrics:
+    values: [metrics_handler_bccd]
 
 
 command:

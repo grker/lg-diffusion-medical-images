@@ -29,7 +29,9 @@ class TopoLoss(torch.nn.Module):
     It sums the lengths of the components and cycles of the persistence diagram, while ignoring the largest ones.
     """
 
-    def __init__(self, alpha, average="sample_class", sublevel=False, size=None):
+    def __init__(
+        self, alpha, average="sample_class", sublevel=False, size=None, with_cycles=True
+    ):
         super().__init__()
 
         if size is None:
@@ -37,8 +39,11 @@ class TopoLoss(torch.nn.Module):
         else:
             self.set_up_persistence_layer(size, sublevel)
 
+        self.with_cycles = with_cycles
+
         self.comp_lengths = PartialSumBarcodeLengthsFlexibleSkip(dim=0)
-        self.cycle_lengths = PartialSumBarcodeLengthsFlexibleSkip(dim=1)
+        if self.with_cycles:
+            self.cycle_lengths = PartialSumBarcodeLengthsFlexibleSkip(dim=1)
         self.sublevel = sublevel
         self.alpha = alpha
         self.average = average
@@ -48,7 +53,10 @@ class TopoLoss(torch.nn.Module):
             self.persistence_layer = LevelSetLayer2D(size=size, sublevel=self.sublevel)
 
     def forward(
-        self, prediction: torch.Tensor, betti_0: torch.Tensor, betti_1: torch.Tensor
+        self,
+        prediction: torch.Tensor,
+        betti_0: torch.Tensor,
+        betti_1: torch.Tensor = None,
     ):
         """
         params:
@@ -68,9 +76,10 @@ class TopoLoss(torch.nn.Module):
                 comp_loss += self.comp_lengths(
                     interval_info, betti_0[sample_idx, class_idx]
                 )
-                cycle_loss += self.cycle_lengths(
-                    interval_info, betti_1[sample_idx, class_idx]
-                )
+                if self.with_cycles:
+                    cycle_loss += self.cycle_lengths(
+                        interval_info, betti_1[sample_idx, class_idx]
+                    )
 
         if self.average == "sample_class":
             comp_loss /= prediction.shape[0] * prediction.shape[1]
@@ -80,3 +89,8 @@ class TopoLoss(torch.nn.Module):
             cycle_loss /= prediction.shape[0]
 
         return self.alpha * comp_loss + (1 - self.alpha) * cycle_loss
+
+
+class TopoLoss_0(TopoLoss):
+    def __init__(self, alpha, average="sample_class", sublevel=False, size=None):
+        super().__init__(1.0, average, sublevel, size, with_cycles=False)

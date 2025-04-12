@@ -4,7 +4,7 @@ from .metrics_wrapper import (
     ClassWiseDiceMetric,
     HausdorffDistanceMetric2,
 )
-from .topo_metric_wrapper import DigitBettiNumberMetric
+from .topo_metric_wrapper import ComponentBettiNumberMetric_0, DigitBettiNumberMetric
 
 __all__ = [
     "ClassWiseDiceMetric",
@@ -14,4 +14,5 @@ __all__ = [
     "MetricsHandler",
     "MetricsInput",
     "clean_nan_scores_and_avg",
+    "ComponentBettiNumberMetric_0",
 ]

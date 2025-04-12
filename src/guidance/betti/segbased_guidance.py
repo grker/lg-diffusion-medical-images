@@ -147,7 +147,8 @@ class LossGuiderSegmentationComponentsDigits(LossGuiderSegmentationComponents):
 
         assert betti_0.shape[:2] == model_output.shape[:2]
 
-        x_softmax = torch.sigmoid(model_output)
+        # x_softmax = torch.sigmoid(model_output)
+        x_softmax = model_output
         pseudo_gt = self.pseudo_gt(x_softmax.detach(), t, batch_idx, betti_0).to(
             device=x_softmax.device
         )
