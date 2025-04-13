@@ -10,7 +10,7 @@ from .betti.segbased_guidance import (
     LossGuiderSegmentationComponentsDigits,
     LossGuiderSegmentationCycles,
 )
-from .betti.topo_guider import TopoGuider
+from .betti.topo_guider import TopoGuider, TopoGuider_0
 from .loss_guider_base import LossGuider
 
 __all__ = [
@@ -24,4 +24,5 @@ __all__ = [
     "LossGuiderSegmenationCyclesDigits",
     "BirthDeathGuider",
     "TopoGuider",
+    "TopoGuider_0",
 ]

@@ -1,5 +1,5 @@
 defaults:
-  - guider: seg_comp
+  - guider: seg_comp_digits
   - regularizer: dice_regularizer
   - _self_
 
@@ -10,7 +10,7 @@ mode: dps_guidance
 stop_step: 1
 type: repeated
 input_type: x_0
-reps_per_guided_step: 7
+reps_per_guided_step: 5
 model_output_type: probs
 deciding_metrics:
-  BettiNumberMetric: [betti_number_0, betti_number_1]
+  ComponentBettiNumberMetric_0: [digit_betti_number_0]

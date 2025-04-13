@@ -46,6 +46,8 @@ def create_wandb_tags(config: omegaconf.DictConfig):
     ):
         wandb_tags.append(config.diffusion.loss_guidance.guider.name)
         wandb_tags.append(config.diffusion.loss_guidance.mode)
+        if "type" in config.diffusion.loss_guidance.keys():
+            wandb_tags.append(config.diffusion.loss_guidance.type)
 
     return wandb_tags
 

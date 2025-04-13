@@ -4,13 +4,11 @@ defaults:
   - _self_
 
 gamma: 0.1
-starting_step: 30
+starting_step: 10
 visualize_gradients: False
-mode: dps_guidance
+mode: only_guided
 stop_step: 1
-type: repeated
 input_type: x_0
-reps_per_guided_step: 7
 model_output_type: probs
 deciding_metrics:
-  BettiNumberMetric: [betti_number_0, betti_number_1]
+  ComponentBettiNumberMetric_0: [digit_betti_number_0]

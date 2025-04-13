@@ -1,0 +1,8 @@
+defaults:
+  - loss: topo_loss_0
+  - _self_
+
+name: TopoGuider_0
+num_classes: 2
+fixed_betti_numbers: False
+topo_features: null

@@ -10,9 +10,10 @@ class PartialSumBarcodeLengthsFlexibleSkip(torch.nn.Module):
     PartialSumBarcodeLengths with flexible skip takes an additional argument in the forward pass instead of having a fixed skip value initialized in the constructor like in the original PartialSumBarcodeLengths.
     """
 
-    def __init__(self, dim):
+    def __init__(self, dim, power=1):
         super().__init__()
         self.dim = dim
+        self.power = power
 
     def forward(self, interval_info, skip):
         intervals, issublevel = interval_info
@@ -20,7 +21,7 @@ class PartialSumBarcodeLengthsFlexibleSkip(torch.nn.Module):
         lengths = get_barcode_lengths(intervals[self.dim], issublevel)
         sortl, indl = torch.sort(lengths, descending=True)
 
-        return torch.sum(sortl[skip:])
+        return torch.sum(torch.pow(sortl[skip:], self.power))
 
 
 class TopoLoss(torch.nn.Module):

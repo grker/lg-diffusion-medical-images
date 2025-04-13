@@ -477,6 +477,8 @@ class DDPM_DPS_Regularized(DDPM):
     def initialize_guider(self, guider_config: GuiderConfig):
         import guidance
 
+        print(f"guider config: {guider_config}")
+
         if hasattr(guidance, guider_config.name):
             print(f"guider config: {guider_config}")
             return getattr(guidance, guider_config.name)(guider_config)
@@ -795,13 +797,65 @@ class DDPM_DPS_Regularized(DDPM):
         else:
             raise ValueError(f"Mode {self.mode} not supported!")
 
-        loss_update = {}
-        loss = 0.0
-
         guidance_input = self.get_guidance_input(noisy_mask, prediction)
         guidance_input.requires_grad_(True)
-
         print(f"guidance_input has grad: {guidance_input.requires_grad}")
+
+        loss = self.compute_loss(guidance_input, topo_inputs, t, batch_idx)
+
+        # compute the gradients and update the noisy mask
+        loss.backward()
+
+        with torch.no_grad():
+            guidance_grads = (self.gamma if gamma is None else gamma) * noisy_mask.grad
+
+            print(f"guidance_grads max: {guidance_grads.max()}")
+            print(f"guidance_grads min: {guidance_grads.min()}")
+
+            if self.mode == "only_guided":
+                new_noisy_mask = noisy_mask - guidance_grads
+            elif self.mode == "dps_guidance" or self.mode == "dps_only_reg":
+                new_noisy_mask = self.scheduler.step(
+                    model_output=prediction, timestep=t, sample=noisy_mask
+                ).prev_sample
+                new_noisy_mask = new_noisy_mask - guidance_grads
+            else:
+                raise ValueError(f"Mode {self.mode} not supported!")
+
+            if self.visualize_gradients:
+                random_idx = int(images.shape[0] / 2)
+                if random_idx >= images.shape[0]:
+                    random_idx = images.shape[0] - 1
+
+                visualize_gradients(
+                    guidance_grads[random_idx],
+                    t,
+                    batch_idx,
+                    random_idx,
+                    prediction[random_idx],
+                    commit=(t == 1),
+                )
+
+        # Kill the gradients to prevent memory leaks
+        prediction = prediction.detach().cpu()
+        guidance_input = guidance_input.detach().cpu()
+        noisy_mask = noisy_mask.detach().cpu()
+        guidance_grads = None
+
+        if return_gradients:
+            return new_noisy_mask, guidance_grads
+        else:
+            return new_noisy_mask
+
+    def compute_loss(
+        self,
+        guidance_input: torch.Tensor,
+        topo_inputs: dict[str, torch.Tensor],
+        t: int,
+        batch_idx: int,
+    ):
+        loss = 0.0
+        loss_update = {}
 
         if self.mode != "dps_only_reg":
             guidance_loss = self.loss_guider.guidance_loss(
@@ -833,46 +887,7 @@ class DDPM_DPS_Regularized(DDPM):
             t,
         )
 
-        # compute the gradients and update the noisy mask
-        loss.backward()
-
-        with torch.no_grad():
-            guidance_grads = (self.gamma if gamma is None else gamma) * noisy_mask.grad
-
-            print(f"guidance_grads max: {guidance_grads.max()}")
-            print(f"guidance_grads min: {guidance_grads.min()}")
-
-            if self.mode == "only_guided":
-                new_noisy_mask = noisy_mask - guidance_grads
-            elif self.mode == "dps_guidance" or self.mode == "dps_only_reg":
-                new_noisy_mask = self.scheduler.step(
-                    model_output=prediction, timestep=t, sample=noisy_mask
-                ).prev_sample
-                new_noisy_mask = new_noisy_mask - guidance_grads
-            else:
-                raise ValueError(f"Mode {self.mode} not supported!")
-
-            if self.visualize_gradients:
-                random_idx = int(images.shape[0] / 2)
-                visualize_gradients(
-                    guidance_grads[random_idx],
-                    t,
-                    batch_idx,
-                    random_idx,
-                    prediction[random_idx],
-                    commit=(t == 1),
-                )
-
-        # Kill the gradients to prevent memory leaks
-        prediction = prediction.detach().cpu()
-        guidance_input = guidance_input.detach().cpu()
-        noisy_mask = noisy_mask.detach().cpu()
-        guidance_grads = None
-
-        if return_gradients:
-            return new_noisy_mask, guidance_grads
-        else:
-            return new_noisy_mask
+        return loss
 
 
 class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
@@ -917,80 +932,49 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
         if self.mode == "only_guided":
             prediction = noisy_mask
         elif self.mode == "dps_guidance" or self.mode == "dps_only_reg":
-            prediction = self.model(
-                torch.cat((noisy_mask, images), dim=1),
-                torch.full((images.shape[0],), t, device=images.device),
-            )
+            prediction = self.get_model_output(noisy_mask, images, t)
         else:
             raise ValueError(f"Mode {self.mode} not supported!")
 
-        optimized_prediction = torch.nn.Parameter(
-            prediction.detach().clone(), requires_grad=True
+        guidance_input = torch.nn.Parameter(
+            self.get_guidance_input(noisy_mask, prediction).detach().clone(),
+            requires_grad=True,
         )
 
+        # optimized_prediction = torch.nn.Parameter(prediction.detach().clone(), requires_grad=True)
+
         for step_rep in range(self.reps_per_guided_step):
-            loss_update = {}
-            loss = 0.0
-
-            if self.mode != "dps_only_reg":
-                guidance_loss = self.loss_guider.guidance_loss(
-                    optimized_prediction,
-                    t,
-                    batch_idx,
-                    **topo_inputs,
-                )
-                guidance_loss = guidance_loss.view(1)
-                print(
-                    f"\nguidance loss at timestep {t} and rep {step_rep}: {guidance_loss.item()}"
-                )
-
-                loss += guidance_loss
-                loss_update = {self.loss_guider.loss_name: guidance_loss.item()}
-
-            if self.regularizer:
-                reg_loss = self.compute_regularized_loss(
-                    prediction, topo_inputs["reference_mask"]
-                )
-                print(
-                    f"regularized loss at timestep {t} and rep {step_rep}: {reg_loss.item()}"
-                )
-
-                loss = self.weighting * loss + (1 - self.weighting) * reg_loss
-                loss_update[self.regularized_loss_name] = reg_loss.item()
-
-            print(f"total loss at timestep {t} and rep {step_rep}: {loss.item()}")
-
-            self.metric_handler.update_loss(
-                loss_update,
-                t,
-            )
+            print(f"computing loss at timestep {t} and rep {step_rep}")
+            loss = self.compute_loss(guidance_input, topo_inputs, t, batch_idx)
 
             loss.backward(retain_graph=True)
 
             with torch.no_grad():
                 prediction_grads = (
                     self.gamma if gamma is None else gamma
-                ) * optimized_prediction.grad
+                ) * guidance_input.grad
 
                 print(f"prediction_grads max: {prediction_grads.max()}")
                 print(f"prediction_grads min: {prediction_grads.min()}")
 
-                optimized_prediction = optimized_prediction - prediction_grads
+                guidance_input = guidance_input - prediction_grads
 
-                optimized_prediction = optimized_prediction.detach()
-                optimized_prediction.grad = None
+                guidance_input = guidance_input.detach()
+                guidance_input.grad = None
                 prediction_grads = None
 
-                optimized_prediction.requires_grad_(True)
+                guidance_input.requires_grad_(True)
 
         with torch.no_grad():
             if self.mode != "only_guided":
                 noisy_mask = self.scheduler.step(
-                    model_output=optimized_prediction, timestep=t, sample=noisy_mask
+                    model_output=guidance_input, timestep=t, sample=noisy_mask
                 ).prev_sample
 
-            optimized_prediction = optimized_prediction.detach()
-            optimized_prediction.grad = None
+            prediction = prediction.detach()
+            prediction.grad = None
+            guidance_input = guidance_input.detach()
+            guidance_input.grad = None
 
         if return_gradients:
             return noisy_mask, prediction_grads
