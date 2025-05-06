@@ -1,6 +1,6 @@
 project: difseg
 program: src/loss_guidance.py
-name: bccd_topo_x_0_probs_bhoaix1n
+name: bccd_ref_bhoaix1n_2
 method: grid
 metric:
   goal: minimize
@@ -10,11 +10,11 @@ parameters:
   loss_guidance:
     values: [loss_guidance_bccd]
   loss_guidance.model_output_type:
-    values: [probs]
+    values: [pure]
   loss_guidance.input_type:
     values: [x_0]
   loss_guidance.gamma:
-    values: [0.1, 1, 10, 50]
+    values: [0.1]
   loss_guidance/guider:
     values: [topo_guider_0]
   loss_guidance.guider.name:
@@ -22,19 +22,21 @@ parameters:
   loss_guidance.mode:
     values: [dps_guidance]
   loss_guidance.regularizer.weighting:
-    values: [0.2, 0.5, 1.0]
+    values: [1.0]
   loss_guidance.starting_step:
-    values: [10, 30, 50]
+    values: [30]
   loss_guidance.stop_step:
     values: [1]
   loss_guidance/regularizer:
     values: [dice_regularizer]
   run_id:
-    values: [bhoaix1n]
+    values: [eqzo8jkz]
   test_batch_size:
     values: [16]
   metrics:
     values: [metrics_handler_bccd]
+  seed:
+    values: [7843, 9987, 2300]
 
 
 command:

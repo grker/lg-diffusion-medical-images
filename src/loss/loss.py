@@ -56,7 +56,7 @@ class CustomLoss(torch.nn.Module):
         if "model_output_type" in config:
             self.model_output_type = config.model_output_type
         else:
-            self.model_output_type = "probs"
+            self.model_output_type = None
 
     def forward(
         self,

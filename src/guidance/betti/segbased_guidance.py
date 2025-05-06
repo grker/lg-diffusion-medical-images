@@ -328,9 +328,6 @@ class LossGuiderSegmentationCycles(SegBasedBettiGuidance):
     def guidance_loss(
         self, model_output: torch.Tensor, t: int, batch_idx: int, **kwargs: dict
     ):
-        print(f"timestep: {t}")
-        print(f"model_output max: {model_output.max()}")
-        print(f"model_output min: {model_output.min()}")
         # x_softmax = torch.softmax(torch.clamp(model_output, -1, 1), dim=1).detach()
         # x_softmax = max_min_normalization(model_output).detach()
 

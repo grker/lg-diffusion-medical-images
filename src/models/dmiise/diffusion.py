@@ -47,6 +47,7 @@ class DDPM(pl.LightningModule):
     metrics: MetricsHandler
     mask_transformer: BaseMaskMapping
     num_classes: int  # always includes the background
+    seed: int
 
     def __init__(
         self,
@@ -56,10 +57,13 @@ class DDPM(pl.LightningModule):
         metrics: MetricsHandler,
         mask_transformer: BaseMaskMapping,
         loss: torch.nn.Module,
+        seed: int,
     ):
         super().__init__()
 
         print("Creating DDPM model")
+
+        self.seed = seed
 
         self.create_gif_over_timesteps = False
         self.scheduler = self.create_scheduler(diffusion_config)
@@ -81,13 +85,13 @@ class DDPM(pl.LightningModule):
         self.mask_transformer = mask_transformer
         self.repetitions_test = diffusion_config.repetitions_test
         self.num_classes = mask_transformer.get_num_classes()
+        if "p" in diffusion_config.keys():
+            self.p = diffusion_config.p
+        else:
+            self.p = 0.0
 
         self.loss_fn = loss
         self.model_output_type = self.loss_fn.model_output_type
-
-        print(
-            f"Diffusion uses the following model output type: {self.model_output_type}"
-        )
 
     def create_scheduler(self, diffusion_config: DiffusionConfig):
         clip_sample = False if diffusion_config.clip_range is None else True
@@ -150,6 +154,9 @@ class DDPM(pl.LightningModule):
             device=gt_train_masks.device,
             dtype=torch.int64,
         )
+
+        # random_masking = torch.bernoulli(torch.full((num_samples,), 1 - self.p)).to(gt_train_masks.device)
+        # images = images * random_masking[:, None, None, None]
         noisy_image = self.scheduler.add_noise(gt_train_masks, noise, timesteps)
         prediction = self.model(torch.cat((noisy_image, images), dim=1), timesteps)
 
@@ -190,11 +197,6 @@ class DDPM(pl.LightningModule):
             torch.full((num_samples,), timestep, device=images.device),
         )
 
-        # print(f"timestep: {timestep}")
-
-        # print(f"model_output max: {model_output.max()}")
-        # print(f"model_output min: {model_output.min()}")
-
         if self.model_output_type == "pure":
             return model_output
         elif self.model_output_type == "probs":
@@ -203,8 +205,6 @@ class DDPM(pl.LightningModule):
             else:
                 softmax_model_output = torch.softmax(model_output, dim=1)
 
-            # print(f"softmax_model_output max: {softmax_model_output.max()}")
-            # print(f"softmax_model_output min: {softmax_model_output.min()}")
             return softmax_model_output
         else:
             raise ValueError(
@@ -217,7 +217,7 @@ class DDPM(pl.LightningModule):
         print(f"prediction type scheduler: {self.scheduler.prediction_type}")
 
         generator = torch.Generator(device=self.device)
-        seed = batch_idx * self.current_epoch
+        seed = batch_idx * self.current_epoch * self.seed
         generator.manual_seed(seed)
 
         images, gt_masks, gt_train_masks, topo_inputs = unpack_batch(batch, "test")
@@ -274,7 +274,7 @@ class DDPM(pl.LightningModule):
                 images,
                 gt_masks,
                 seg_mask,
-                None,
+                torch.mean(logits, dim=0),
                 phase,
                 self.mask_transformer.gt_mapping_for_visualization(),
                 batch_idx,
@@ -438,9 +438,16 @@ class DDPM_DPS_Regularized(DDPM):
         metrics: dict,
         mask_transformer: BaseMaskMapping,
         loss: torch.nn.Module,
+        seed: int,
     ):
         super().__init__(
-            model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
+            model,
+            diffusion_config,
+            optimizer_config,
+            metrics,
+            mask_transformer,
+            loss,
+            seed,
         )
 
         # set up the loss guider
@@ -477,10 +484,7 @@ class DDPM_DPS_Regularized(DDPM):
     def initialize_guider(self, guider_config: GuiderConfig):
         import guidance
 
-        print(f"guider config: {guider_config}")
-
         if hasattr(guidance, guider_config.name):
-            print(f"guider config: {guider_config}")
             return getattr(guidance, guider_config.name)(guider_config)
         else:
             raise ValueError(f"PseudoGTGenerator {guider_config.name} not found!")
@@ -494,8 +498,6 @@ class DDPM_DPS_Regularized(DDPM):
         self.starting_step = loss_guidance_config.starting_step
         self.stop_step = loss_guidance_config.stop_step
         self.deciding_metrics = loss_guidance_config.deciding_metrics
-
-        print(f"deciding_metrics: {self.deciding_metrics}")
 
         assert (
             self.stop_step <= self.starting_step
@@ -526,10 +528,8 @@ class DDPM_DPS_Regularized(DDPM):
     def prepare_reference_mask(
         self, reference_mask: torch.Tensor, mode: str = "segmentation"
     ):
-        print(f"preparing reference mask with mode: {mode}")
         if mode in ["segmentation", "softmax"]:
             if self.model_output_type != "probs":
-                print("Applying softmax to reference mask!!!")
                 reference_mask = self.get_softmax_prediction(
                     reference_mask, clamping=False
                 )
@@ -552,14 +552,18 @@ class DDPM_DPS_Regularized(DDPM):
         num_samples = images.shape[0]
         reps = self.repetitions_test if phase == "test" else self.repetitions
 
-        print(f"topo_inputs: {topo_inputs}")
+        generator = torch.Generator(device=self.device)
+        generator.manual_seed(batch_idx * self.seed)
 
         # Run the whole backward pass once to get the reference mask, all steps are unguided
 
-        reference_mask = torch.rand_like(gt_train_masks, device=images.device)
-
+        reference_mask = torch.randn(
+            gt_train_masks.shape, device=images.device, generator=generator
+        )
         for t in tqdm(self.scheduler.timesteps):
-            reference_mask = self.unguided_step(reference_mask, gt_masks, images, t)
+            reference_mask = self.unguided_step(
+                reference_mask, gt_masks, images, t, generator=generator
+            )
 
         # add the reference mask to the topo_inputs
         topo_inputs["reference_mask"] = self.prepare_reference_mask(
@@ -581,43 +585,44 @@ class DDPM_DPS_Regularized(DDPM):
         )
 
         bad_indices = torch.empty(0).to("cpu")
+        score_ref = {
+            f"{metric_name}_{sub_name}": torch.empty(0).to("cpu")
+            for metric_name in self.deciding_metrics.keys()
+            for sub_name in self.deciding_metrics[metric_name]
+        }
         # bad_indices = torch.empty(0, device=images.device, dtype=torch.int64)
         for metric_name, sub_names in self.deciding_metrics.items():
             for sub_name in sub_names:
-                bad_samples, _ = self.metric_handler.find_bad_samples(
+                bad_samples, score_ref_samples = self.metric_handler.find_bad_samples(
                     metrics_input, metric_name, sub_name
                 )
                 bad_samples = bad_samples.flatten().to(device=bad_indices.device)
                 bad_indices = torch.cat((bad_indices, bad_samples), dim=0)
-                # self.log(
-                #     f"{phase}_{sub_name}_without_guidance",
-                #     clean_nan_scores_and_avg(scores),
-                # )
+                score_ref[f"{metric_name}_{sub_name}"] = torch.cat(
+                    (score_ref[f"{metric_name}_{sub_name}"], score_ref_samples), dim=0
+                )
 
         bad_indices = torch.unique(bad_indices).to(torch.int64)
 
         if len(bad_indices) == 0:
             print("No bad indices found, skipping guided backward pass")
+            return 0
 
         # run the actual guided backward pass
         if len(bad_indices) > 0:
-            images_bad_samples = images[bad_indices]
-            gt_masks_bad_samples = gt_masks[bad_indices]
-            gt_train_masks_bad_samples = gt_train_masks[bad_indices]
-            topo_inputs_bad_samples = {
-                key: value[bad_indices] for key, value in topo_inputs.items()
-            }
-
             ensemble_mask = []
             for rep in range(reps):
-                noisy_mask = torch.rand_like(
-                    gt_train_masks_bad_samples, device=images.device
+                generator = torch.Generator(device=self.device)
+                generator.manual_seed(batch_idx * self.seed)
+
+                noisy_mask = torch.randn(
+                    gt_train_masks.shape, device=images.device, generator=generator
                 )
 
                 # unguided diffusion steps
                 for t in tqdm(self.scheduler.timesteps[: -self.starting_step]):
                     noisy_mask = self.unguided_step(
-                        noisy_mask, gt_masks_bad_samples, images_bad_samples, t
+                        noisy_mask, gt_masks, images, t, generator=generator
                     )
 
                 # activate the gradient for the model for the guided steps
@@ -633,26 +638,23 @@ class DDPM_DPS_Regularized(DDPM):
                 ]:
                     noisy_mask = self.guided_step(
                         noisy_mask,
-                        images_bad_samples,
-                        topo_inputs_bad_samples,
+                        images,
+                        topo_inputs,
                         t,
                         batch_idx,
+                        generator=generator,
                     )
-                    self.guidance_metrics(
-                        noisy_mask, gt_masks_bad_samples, topo_inputs_bad_samples, t
-                    )
+                    self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, t)
 
                 if self.no_switch:
                     noisy_mask = self.guided_step(
                         noisy_mask,
-                        images_bad_samples,
-                        topo_inputs_bad_samples,
+                        images,
+                        topo_inputs,
                         0,
                         batch_idx,
                     )
-                    self.guidance_metrics(
-                        noisy_mask, gt_masks_bad_samples, topo_inputs_bad_samples, 0
-                    )
+                    self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, 0)
 
                     # deactivate the gradient for the model
                     for name, param in self.model.named_parameters():
@@ -663,21 +665,15 @@ class DDPM_DPS_Regularized(DDPM):
                     # again unguided steps
                     for t in self.scheduler.timesteps[-self.stop_step :]:
                         noisy_mask = noisy_mask.requires_grad_(False)
-                        noisy_mask = self.unguided_step(
-                            noisy_mask, gt_masks_bad_samples, images_bad_samples, t
-                        )
+                        noisy_mask = self.unguided_step(noisy_mask, gt_masks, images, t)
 
-                        self.guidance_metrics(
-                            noisy_mask, gt_masks_bad_samples, topo_inputs_bad_samples, t
-                        )
+                        self.guidance_metrics(noisy_mask, gt_masks, topo_inputs, t)
 
                 ensemble_mask.append(noisy_mask.detach().cpu())
 
                 if self.regularizer and self.repeated:
-                    topo_inputs_bad_samples["reference_mask"] = (
-                        self.prepare_reference_mask(
-                            noisy_mask, self.mode_for_reference_mask
-                        )
+                    topo_inputs["reference_mask"] = self.prepare_reference_mask(
+                        noisy_mask, self.mode_for_reference_mask
                     )
 
                 self.metric_handler.log_guidance_metrics()
@@ -689,7 +685,7 @@ class DDPM_DPS_Regularized(DDPM):
             logits = self.mask_transformer.get_logits(ensemble_mask)
 
             seg_mask = self.mask_transformer.get_segmentation(logits)
-            segmentation_reference_mask[bad_indices] = seg_mask.to(
+            segmentation_reference_mask[bad_indices] = seg_mask[bad_indices].to(
                 device=segmentation_reference_mask.device
             )
 
@@ -697,6 +693,21 @@ class DDPM_DPS_Regularized(DDPM):
         gt_masks = gt_masks.to(device=segmentation_reference_mask.device)
         metrics_input = MetricsInput(segmentation_reference_mask, gt_masks, topo_inputs)
         self.metric_handler.compute_metrics(metrics_input, phase, self.log)
+
+        score_after = {
+            f"{metric_name}_{sub_name}": torch.empty(0).to("cpu")
+            for metric_name in self.deciding_metrics.keys()
+            for sub_name in self.deciding_metrics[metric_name]
+        }
+        for metric_name, sub_names in self.deciding_metrics.items():
+            for sub_name in sub_names:
+                _, score_after_samples = self.metric_handler.find_bad_samples(
+                    metrics_input, metric_name, sub_name
+                )
+                score_after[f"{metric_name}_{sub_name}"] = torch.cat(
+                    (score_after[f"{metric_name}_{sub_name}"], score_after_samples),
+                    dim=0,
+                )
 
         # Visualization
         index = random.randint(0, num_samples - 1)
@@ -762,11 +773,25 @@ class DDPM_DPS_Regularized(DDPM):
 
         return noisy_mask
 
-    def get_guidance_input(self, noisy_mask: torch.Tensor, prediction: torch.Tensor):
+    def get_guidance_input(
+        self, noisy_mask: torch.Tensor, prediction: torch.Tensor, t: int
+    ):
         if self.input_type == "x_t":
             return noisy_mask
         elif self.input_type == "x_0":
-            return prediction
+            if self.prediction_type == "epsilon":
+                x_0 = self.scheduler.step(
+                    model_output=prediction,
+                    timestep=t,
+                    sample=noisy_mask,
+                ).pred_original_sample
+            elif self.prediction_type == "sample":
+                x_0 = prediction
+            else:
+                raise ValueError(
+                    f"Prediction type {self.prediction_type} not supported!"
+                )
+            return x_0
         elif self.input_type == "x_t_adjusted":
             if self.model_output_type == "probs":
                 if noisy_mask.shape[1] == 1:
@@ -786,6 +811,7 @@ class DDPM_DPS_Regularized(DDPM):
         batch_idx: int,
         gamma: float | None = None,
         return_gradients: bool = False,
+        generator: torch.Generator | None = None,
     ):
         noisy_mask = noisy_mask.requires_grad_(True)
         prediction = None
@@ -797,9 +823,8 @@ class DDPM_DPS_Regularized(DDPM):
         else:
             raise ValueError(f"Mode {self.mode} not supported!")
 
-        guidance_input = self.get_guidance_input(noisy_mask, prediction)
+        guidance_input = self.get_guidance_input(noisy_mask, prediction, t)
         guidance_input.requires_grad_(True)
-        print(f"guidance_input has grad: {guidance_input.requires_grad}")
 
         loss = self.compute_loss(guidance_input, topo_inputs, t, batch_idx)
 
@@ -809,14 +834,14 @@ class DDPM_DPS_Regularized(DDPM):
         with torch.no_grad():
             guidance_grads = (self.gamma if gamma is None else gamma) * noisy_mask.grad
 
-            print(f"guidance_grads max: {guidance_grads.max()}")
-            print(f"guidance_grads min: {guidance_grads.min()}")
-
             if self.mode == "only_guided":
                 new_noisy_mask = noisy_mask - guidance_grads
             elif self.mode == "dps_guidance" or self.mode == "dps_only_reg":
                 new_noisy_mask = self.scheduler.step(
-                    model_output=prediction, timestep=t, sample=noisy_mask
+                    model_output=prediction,
+                    timestep=t,
+                    sample=noisy_mask,
+                    generator=generator,
                 ).prev_sample
                 new_noisy_mask = new_noisy_mask - guidance_grads
             else:
@@ -865,8 +890,6 @@ class DDPM_DPS_Regularized(DDPM):
                 **topo_inputs,
             )
             guidance_loss = guidance_loss.view(1)
-            print(f"\nguidance loss at timestep {t}: {guidance_loss.item()}")
-
             loss += guidance_loss
             loss_update = {self.loss_guider.loss_name: guidance_loss.item()}
 
@@ -874,7 +897,6 @@ class DDPM_DPS_Regularized(DDPM):
             reg_loss = self.compute_regularized_loss(
                 guidance_input, topo_inputs["reference_mask"]
             )
-            print(f"regularized loss at timestep {t}: {reg_loss.item()}")
 
             loss = self.weighting * loss + (1 - self.weighting) * reg_loss
             loss_update[self.regularized_loss_name] = reg_loss.item()
@@ -899,6 +921,7 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
         metrics: dict,
         mask_transformer: BaseMaskMapping,
         loss: torch.nn.Module,
+        seed: int,
     ):
         if "reps_per_guided_step" in diffusion_config.loss_guidance.keys():
             self.reps_per_guided_step = (
@@ -908,7 +931,13 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
             self.reps_per_guided_step = 1
 
         super().__init__(
-            model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
+            model,
+            diffusion_config,
+            optimizer_config,
+            metrics,
+            mask_transformer,
+            loss,
+            seed,
         )
 
     def val_test_step(self, batch, batch_idx, phase):
@@ -924,6 +953,7 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
         batch_idx: int,
         gamma: float | None = None,
         return_gradients: bool = False,
+        generator: torch.Generator | None = None,
     ):
         prediction = None
 
@@ -937,14 +967,13 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
             raise ValueError(f"Mode {self.mode} not supported!")
 
         guidance_input = torch.nn.Parameter(
-            self.get_guidance_input(noisy_mask, prediction).detach().clone(),
+            self.get_guidance_input(noisy_mask, prediction, t).detach().clone(),
             requires_grad=True,
         )
 
         # optimized_prediction = torch.nn.Parameter(prediction.detach().clone(), requires_grad=True)
 
         for step_rep in range(self.reps_per_guided_step):
-            print(f"computing loss at timestep {t} and rep {step_rep}")
             loss = self.compute_loss(guidance_input, topo_inputs, t, batch_idx)
 
             loss.backward(retain_graph=True)
@@ -953,9 +982,6 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
                 prediction_grads = (
                     self.gamma if gamma is None else gamma
                 ) * guidance_input.grad
-
-                print(f"prediction_grads max: {prediction_grads.max()}")
-                print(f"prediction_grads min: {prediction_grads.min()}")
 
                 guidance_input = guidance_input - prediction_grads
 
@@ -968,7 +994,10 @@ class DDPM_DPS_Regularized_Repeated(DDPM_DPS_Regularized):
         with torch.no_grad():
             if self.mode != "only_guided":
                 noisy_mask = self.scheduler.step(
-                    model_output=guidance_input, timestep=t, sample=noisy_mask
+                    model_output=guidance_input,
+                    timestep=t,
+                    sample=noisy_mask,
+                    generator=generator,
                 ).prev_sample
 
             prediction = prediction.detach()
@@ -992,9 +1021,16 @@ class DDPM_Autoencoder(DDPM):
         mask_transformer: BaseMaskMapping,
         loss: torch.nn.Module,
         autoencoder: EncoderDecoderModel,
+        seed: int,
     ):
         super().__init__(
-            model, diffusion_config, optimizer_config, metrics, mask_transformer, loss
+            model,
+            diffusion_config,
+            optimizer_config,
+            metrics,
+            mask_transformer,
+            loss,
+            seed,
         )
 
         self.autoencoder = autoencoder

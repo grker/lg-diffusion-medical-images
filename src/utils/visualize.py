@@ -1,3 +1,4 @@
+import io
 import random
 
 import matplotlib.pyplot as plt
@@ -198,13 +199,29 @@ def visualize_segmentation(
         )
         pred_mask_wandb = create_wandb_image(normalize(pred_mask[img_index]), caption)
         gt_mask_wandb = create_wandb_image(normalize(gt_mask[img_index]), caption)
-        # if num_classes == 2:
-        #     before_threshold = create_wandb_image(normalize(before_threshold[img_index]), caption)
-        #     wandb.log({f"{phase}_before_threshold": before_threshold})
+
+        if before_threshold is not None and num_classes <= 2:
+            visualize_before_threshold(before_threshold[img_index], phase, caption)
 
         wandb.log({f"{phase}_mask_comparison": mask_vis})
         wandb.log({f"{phase}_pred_mask": pred_mask_wandb})
         wandb.log({f"{phase}_gt_mask": gt_mask_wandb})
+
+
+def visualize_before_threshold(image: torch.Tensor, phase: str, caption: str):
+    buf = io.BytesIO()
+    image = torch_to_2d_numpy(image)
+    plt.figure(figsize=(10, 10))
+
+    plt.imshow(image, cmap="gray")
+    plt.colorbar()
+    plt.savefig(buf, format="png")
+    buf.seek(0)
+    plt.close()
+
+    pil_image = Image.open(buf)
+
+    wandb.log({f"{phase}_before_threshold": wandb.Image(pil_image, caption=caption)})
 
 
 def normalize_to_0_1(tensor: torch.Tensor, max=None, min=None):
@@ -437,7 +454,6 @@ def visualize_component_map(
         grid = torchvision.utils.make_grid(
             concat_component_map, nrow=min(num_classes, 4), padding=10
         )
-        print(f"grid shape: {grid.shape}", flush=True)
         wandb.log({f"{title}": wandb.Image(grid, f"BIdx_{batch_idx}_Idx_{idx}")})
 
 

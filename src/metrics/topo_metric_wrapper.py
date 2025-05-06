@@ -19,7 +19,6 @@ class DigitBettiNumberMetric(BettiNumberMetric, TopologicalMetric):
         include_background: bool = False,
         only_components: bool = False,
     ):
-        print("initialize digit betti number metric")
         self.connectivity = connectivity
         self.num_labels = num_labels
         self.include_background = include_background
@@ -27,7 +26,6 @@ class DigitBettiNumberMetric(BettiNumberMetric, TopologicalMetric):
         self.only_components = False
 
     def get_needed_inputs(self):
-        print(f"needed inputs: {self.needed_inputs}")
         return self.needed_inputs
 
     def __call__(
@@ -39,6 +37,7 @@ class DigitBettiNumberMetric(BettiNumberMetric, TopologicalMetric):
         for idx in range(y_pred.shape[0]):
             b0, b1 = self.betti_number_per_pred(y_pred[idx])
 
+            # print(f"b0: {b0}, betti_0[idx]: {betti_0[idx]}")
             # print(f"b1: {b1}, betti_1[idx]: {betti_1[idx]}")
 
             scores[0, idx] = abs(b0 - betti_0[idx])

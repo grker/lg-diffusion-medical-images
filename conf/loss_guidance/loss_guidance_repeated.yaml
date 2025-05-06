@@ -13,4 +13,4 @@ input_type: x_0
 reps_per_guided_step: 7
 model_output_type: probs
 deciding_metrics:
-  BettiNumberMetric: [betti_number_0, betti_number_1]
+  DigitBettiNumberMetric: [digit_betti_number_0, digit_betti_number_1] #BettiNumberMetric: [betti_number_0, betti_number_1]

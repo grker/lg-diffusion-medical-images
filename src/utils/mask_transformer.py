@@ -123,13 +123,7 @@ class MultiClassSegMaskMapping(BaseMaskMapping):
     def get_logits(self, mask: torch.Tensor):
         # Mask is of shape (reps, N, num_classes, H, W)
         # Output is of shape (reps, N, num_classes, H, W)
-        print(
-            f"logits before switch: max {torch.max(mask)}, min {torch.min(mask)}, mean: {torch.mean(mask)}"
-        )
         mask = (-1) * mask if self.train_switch else mask
-        print(
-            f"logits after switch: max {torch.max(mask)}, min {torch.min(mask)}, mean: {torch.mean(mask)}"
-        )
         return mask
 
     def get_segmentation(self, logits: torch.Tensor):
@@ -190,6 +184,7 @@ class BinarySegMaskMapping(BaseMaskMapping):
         self.dataset_mapping = self.check_input(dataset_mapping)
         self.train_mapping = self.check_input(train_mapping)
         self.ensemble_mode = ensemble_mode
+        self.threshold = threshold
 
         threshold = (
             (self.train_mapping["foreground"] + self.train_mapping["background"]) / 2

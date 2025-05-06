@@ -11,3 +11,4 @@ threshold: 0.5
 prediction_type: sample
 num_inference_steps: null
 clip_range: 1
+p: 0.3

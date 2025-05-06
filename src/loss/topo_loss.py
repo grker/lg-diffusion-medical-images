@@ -21,7 +21,9 @@ class PartialSumBarcodeLengthsFlexibleSkip(torch.nn.Module):
         lengths = get_barcode_lengths(intervals[self.dim], issublevel)
         sortl, indl = torch.sort(lengths, descending=True)
 
-        return torch.sum(torch.pow(sortl[skip:], self.power))
+        return torch.sum(torch.pow(1 - sortl[:skip], self.power)) + torch.sum(
+            torch.pow(sortl[skip:], self.power)
+        )
 
 
 class TopoLoss(torch.nn.Module):
@@ -88,6 +90,8 @@ class TopoLoss(torch.nn.Module):
         elif self.average == "sample":
             comp_loss /= prediction.shape[0]
             cycle_loss /= prediction.shape[0]
+
+        print(f"comp_loss: {comp_loss}, cycle_loss: {cycle_loss}")
 
         return self.alpha * comp_loss + (1 - self.alpha) * cycle_loss
 

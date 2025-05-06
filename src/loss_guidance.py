@@ -74,7 +74,7 @@ def main(config: LossGuidanceInferenceConfig):
 
     # add the loss guidance config to the diffusion config
     print(f"new config: {config}")
-    print(f"old config: {old_config}")
+
     old_config.diffusion.loss_guidance = config.loss_guidance
     old_config.loss_guidance = config.loss_guidance
     old_config.dataloader.val_batch_size = config.test_batch_size
@@ -87,6 +87,11 @@ def main(config: LossGuidanceInferenceConfig):
 
     if config.metrics is not None:
         old_config.metrics = config.metrics
+
+    old_config.dataset.mask_transformer.threshold = 0.0
+    old_config.seed = config.seed
+
+    print(f"old config: {old_config}")
 
     wandb_tags = create_wandb_tags(old_config)
     wandb_tags.append(config.run_id)

@@ -106,6 +106,7 @@ class DmiiseSegmentation(BaseSegmentation):
             print(f"model out_channels: {self.config.model.out_channels}")
 
         model_args = self.create_seg_model_args(mask_transformer, num_classes)
+        model_args["seed"] = self.config.seed
 
         if test:
             return (

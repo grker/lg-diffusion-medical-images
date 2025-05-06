@@ -6,7 +6,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
-#SBATCH --gpus=A100:1
+#SBATCH --gpus=1
 
 USERNAME=$USER
 PROJECT_NAME=master_thesis
@@ -69,7 +69,7 @@ export WANDB_CACHE_DIR=${TMPDIR}/wandb_cache
 mkdir -p ${WANDB_CACHE_DIR}
 
 
-SWEEP_ID=s12k1rvz
+SWEEP_ID=uuk18mdo
 
 wandb agent difseg/difseg/${SWEEP_ID}
 
